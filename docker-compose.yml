@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  wireguard:
+    image: linuxserver/wireguard:latest
+    container_name: wireguard-server
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Seoul
+      - SERVERURL=${SERVERURL:-auto}
+      - SERVERPORT=51820
+      - PEERS=100
+      - PEERDNS=auto
+      - INTERNAL_SUBNET=10.100.0.0/16
+      - ALLOWEDIPS=10.100.0.0/16
+    volumes:
+      - ./config:/config
+      - /lib/modules:/lib/modules
+    ports:
+      - 51820:51820/udp
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    restart: unless-stopped
+    networks:
+      vpn_net:
+        ipv4_address: 172.20.0.2
+
+  vpn-api:
+    build: ./api
+    container_name: vpn-api
+    environment:
+      - DATABASE_URL=postgresql://vpn:vpnpass@postgres:5432/vpndb
+      - WIREGUARD_CONFIG_PATH=/config
+      - API_PORT=8090
+      - API_TOKEN=${API_TOKEN:-change-this-token}
+      - SERVERURL=${SERVERURL:-auto}
+    volumes:
+      - ./config:/config
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - 8090:8090
+    depends_on:
+      - postgres
+      - wireguard
+    restart: unless-stopped
+    networks:
+      vpn_net:
+        ipv4_address: 172.20.0.3
+
+  postgres:
+    image: postgres:15
+    container_name: vpn-postgres
+    environment:
+      - POSTGRES_DB=vpndb
+      - POSTGRES_USER=vpn
+      - POSTGRES_PASSWORD=vpnpass
+    volumes:
+      - vpn_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      vpn_net:
+        ipv4_address: 172.20.0.4
+
+networks:
+  vpn_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+volumes:
+  vpn_db_data:
