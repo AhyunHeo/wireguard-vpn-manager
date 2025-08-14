@@ -34,14 +34,17 @@ VPN Manager를 실행할 서버에서 다음 포트를 열어야 합니다:
 #### Windows 서버
 ```powershell
 # PowerShell 관리자 권한으로 실행
-# API 서버 포트 (필수)
-New-NetFirewallRule -DisplayName "VPN Manager API" -Direction Inbound -Protocol TCP -LocalPort 8090 -Action Allow
+# API 서버 포트 (필수) - 개인 및 공용 네트워크 모두 허용
+New-NetFirewallRule -DisplayName "VPN Manager API" -Direction Inbound -Protocol TCP -LocalPort 8090 -Action Allow -Profile Any
 
-# WireGuard VPN 포트 (필수)
-New-NetFirewallRule -DisplayName "WireGuard VPN" -Direction Inbound -Protocol UDP -LocalPort 51820 -Action Allow
+# WireGuard VPN 포트 (필수) - 개인 및 공용 네트워크 모두 허용
+New-NetFirewallRule -DisplayName "WireGuard VPN" -Direction Inbound -Protocol UDP -LocalPort 51820 -Action Allow -Profile Any
 
-# WireGuard UI 포트 (선택사항)
-New-NetFirewallRule -DisplayName "WireGuard UI" -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow
+# WireGuard UI 포트 (선택사항) - 개인 및 공용 네트워크 모두 허용
+New-NetFirewallRule -DisplayName "WireGuard UI" -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow -Profile Any
+
+# 중요: Windows가 네트워크를 "공용"으로 인식하는 경우가 많습니다!
+# 확인 방법: 설정 > 네트워크 및 인터넷 > 상태 > 속성에서 네트워크 프로필 확인
 ```
 
 #### Linux 서버
