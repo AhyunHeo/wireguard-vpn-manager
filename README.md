@@ -23,27 +23,65 @@
 
 ### 1. 프로젝트 클론
 ```bash
-git clone https://github.com/your-org/wireguard-vpn-manager.git
+git clone https://github.com/AhyunHeo/wireguard-vpn-manager.git
 cd wireguard-vpn-manager
 ```
 
-### 2. 로컬 테스트
-```bash
-# 로컬 테스트 환경 실행
-docker-compose -f docker-compose.local.yml up -d
+### 2. 방화벽 설정 (VPN Manager 서버)
 
-# API 토큰 확인
-cat .env.local
+VPN Manager를 실행할 서버에서 다음 포트를 열어야 합니다:
+
+#### Windows 서버
+```powershell
+# PowerShell 관리자 권한으로 실행
+# API 서버 포트 (필수)
+New-NetFirewallRule -DisplayName "VPN Manager API" -Direction Inbound -Protocol TCP -LocalPort 8090 -Action Allow
+
+# WireGuard VPN 포트 (필수)
+New-NetFirewallRule -DisplayName "WireGuard VPN" -Direction Inbound -Protocol UDP -LocalPort 51820 -Action Allow
+
+# WireGuard UI 포트 (선택사항)
+New-NetFirewallRule -DisplayName "WireGuard UI" -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow
 ```
 
-### 3. 프로덕션 배포
+#### Linux 서버
 ```bash
-# 프로덕션 환경 설정
+# UFW 사용 시
+sudo ufw allow 8090/tcp comment 'VPN Manager API'
+sudo ufw allow 51820/udp comment 'WireGuard VPN'
+sudo ufw allow 5000/tcp comment 'WireGuard UI (optional)'
+sudo ufw reload
+
+# iptables 사용 시
+sudo iptables -A INPUT -p tcp --dport 8090 -j ACCEPT
+sudo iptables -A INPUT -p udp --dport 51820 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 5000 -j ACCEPT
+sudo iptables-save > /etc/iptables/rules.v4
+```
+
+#### 클라우드 환경 (AWS/GCP/Azure)
+Security Group 또는 방화벽 규칙에서 다음 포트 허용:
+- TCP 8090 (API)
+- UDP 51820 (VPN)
+- TCP 5000 (UI, 선택사항)
+
+### 3. 로컬 테스트
+```bash
+# 실행 권한 부여
+chmod +x scripts/*.sh
+
+# 로컬 테스트 환경 실행
+./scripts/test-local.sh
+```
+
+### 4. 프로덕션 배포
+```bash
+# 환경 설정
 cp .env.example .env
 # .env 파일 편집하여 설정
 
 # 배포
-./deploy.sh
+./scripts/deploy.sh
 ```
 
 ## 📁 프로젝트 구조
@@ -64,12 +102,25 @@ wireguard-vpn-manager/
 
 ## 🔧 주요 기능
 
+- ✅ **원클릭 VPN 연결** - URL 접속만으로 자동 설치
+- ✅ **QR 코드 지원** - 모바일에서 QR 스캔으로 간편 연결
 - ✅ 자동 키 생성 및 배포
 - ✅ RESTful API로 노드 관리
-- ✅ 동적 IP 할당
+- ✅ 동적 IP 할당 (중앙서버: 10.100.0.x, 워커: 10.100.1.x)
 - ✅ 실시간 연결 상태 모니터링
 - ✅ Docker 기반 쉬운 배포
 - ✅ NAT/방화벽 우회
+
+## 🌐 웹 기반 원클릭 설치
+
+### 비전공자도 쉽게!
+```
+1. 관리자가 링크 생성
+2. 워커 운영자가 브라우저에서 링크 클릭
+3. 자동으로 VPN 설치 및 연결 완료!
+```
+
+터미널이나 명령어 지식이 전혀 필요 없습니다.
 
 ## 🔐 보안
 
@@ -81,11 +132,36 @@ wireguard-vpn-manager/
 ## 📊 모니터링
 
 ```bash
-# 상태 확인
-python3 monitoring/vpn-status.py --watch
+# 실시간 상태 모니터링
+python3 monitoring/vpn-status.py \
+  --api-url http://localhost:8090 \
+  --api-token test-token-123 \
+  --watch
 
-# API로 조회
-curl -H "Authorization: Bearer $API_TOKEN" http://localhost:8090/nodes
+# API로 노드 목록 조회
+curl -H "Authorization: Bearer test-token-123" http://localhost:8090/nodes
+
+# WireGuard UI 접속
+# 브라우저: http://localhost:5000 (admin/admin123)
+```
+
+## ⚠️ 네트워크 요구사항
+
+### 필수 포트
+| 포트 | 프로토콜 | 용도 | 필수 여부 |
+|------|---------|------|----------|
+| 8090 | TCP | VPN Manager API | ✅ 필수 |
+| 51820 | UDP | WireGuard VPN | ✅ 필수 |
+| 5000 | TCP | WireGuard UI | 선택 |
+| 5433 | TCP | PostgreSQL (로컬) | 로컬만 |
+
+### 네트워크 설정 확인
+```bash
+# 포트 열림 확인 (VPN Manager 서버에서)
+netstat -an | grep -E "8090|51820"
+
+# 외부에서 접근 테스트 (워커 노드에서)
+curl http://VPN_MANAGER_IP:8090/health
 ```
 
 ## 📝 라이선스
