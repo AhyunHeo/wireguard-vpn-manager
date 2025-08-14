@@ -5,14 +5,20 @@ QR 코드 기반 VPN 연결
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 import qrcode
 import io
 import base64
 import json
 import uuid
 from datetime import datetime, timedelta
+import os
 
 router = APIRouter()
+
+class QRGenerateRequest(BaseModel):
+    node_id: str
+    node_type: str = "worker"
 
 # 임시 토큰 저장소 (실제로는 Redis나 DB 사용)
 token_store = {}
@@ -209,10 +215,34 @@ async def vpn_qr_page(request: Request):
                 }
             }
             
-            function copyUrl() {
+            async function copyUrl() {
                 const url = document.getElementById('joinUrl').textContent;
-                navigator.clipboard.writeText(url);
-                alert('URL이 복사되었습니다!');
+                try {
+                    // HTTPS가 아닌 경우를 위한 fallback
+                    if (navigator.clipboard && window.isSecureContext) {
+                        await navigator.clipboard.writeText(url);
+                        alert('URL이 복사되었습니다!');
+                    } else {
+                        // 구형 브라우저 또는 HTTP 환경용 fallback
+                        const textArea = document.createElement("textarea");
+                        textArea.value = url;
+                        textArea.style.position = "fixed";
+                        textArea.style.left = "-999999px";
+                        textArea.style.top = "-999999px";
+                        document.body.appendChild(textArea);
+                        textArea.focus();
+                        textArea.select();
+                        try {
+                            document.execCommand('copy');
+                            alert('URL이 복사되었습니다!');
+                        } catch (err) {
+                            alert('복사 실패. URL을 수동으로 복사하세요:\n' + url);
+                        }
+                        document.body.removeChild(textArea);
+                    }
+                } catch (err) {
+                    alert('복사 실패. URL을 수동으로 복사하세요:\n' + url);
+                }
             }
         </script>
     </body>
@@ -222,7 +252,7 @@ async def vpn_qr_page(request: Request):
     return html_content
 
 @router.post("/api/generate-qr")
-async def generate_qr(request: Request, node_id: str, node_type: str = "worker"):
+async def generate_qr(request: Request, qr_request: QRGenerateRequest):
     """
     QR 코드 생성 API
     """
@@ -231,8 +261,8 @@ async def generate_qr(request: Request, node_id: str, node_type: str = "worker")
     
     # 토큰 정보 저장 (15분 유효)
     token_store[token] = {
-        "node_id": node_id,
-        "node_type": node_type,
+        "node_id": qr_request.node_id,
+        "node_type": qr_request.node_type,
         "created_at": datetime.now(),
         "expires_at": datetime.now() + timedelta(minutes=15)
     }
@@ -264,6 +294,128 @@ async def generate_qr(request: Request, node_id: str, node_type: str = "worker")
         "qr_code": f"data:image/png;base64,{qr_base64}",
         "expires_at": token_store[token]["expires_at"].isoformat()
     }
+
+@router.get("/join/{token}", response_class=HTMLResponse)
+async def join_page(token: str, request: Request):
+    """
+    VPN 연결 페이지 (QR 스캔 또는 URL 클릭 후 리다이렉트되는 페이지)
+    """
+    # 토큰 검증
+    if token not in token_store:
+        return HTMLResponse(content="<h1>유효하지 않은 토큰입니다</h1>", status_code=404)
+    
+    token_info = token_store[token]
+    if datetime.now() > token_info["expires_at"]:
+        del token_store[token]
+        return HTMLResponse(content="<h1>만료된 토큰입니다</h1>", status_code=404)
+    
+    # 서버 URL 가져오기
+    server_url = str(request.url).split('/join')[0]
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="ko">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>VPN 자동 설치</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                margin: 0;
+                padding: 20px;
+            }}
+            .container {{
+                background: white;
+                border-radius: 20px;
+                padding: 40px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                max-width: 600px;
+                width: 100%;
+                text-align: center;
+            }}
+            h1 {{
+                color: #333;
+                margin-bottom: 30px;
+            }}
+            .info-card {{
+                background: #f8f9fa;
+                border-radius: 15px;
+                padding: 20px;
+                margin: 20px 0;
+            }}
+            .success {{
+                color: #28a745;
+                font-size: 60px;
+                margin: 20px 0;
+            }}
+            .button {{
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                padding: 15px 30px;
+                border-radius: 50px;
+                font-size: 18px;
+                cursor: pointer;
+                margin: 10px;
+                display: inline-block;
+                text-decoration: none;
+            }}
+            .button:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            }}
+            .code-block {{
+                background: #333;
+                color: #0f0;
+                padding: 15px;
+                border-radius: 10px;
+                font-family: monospace;
+                font-size: 14px;
+                overflow-x: auto;
+                margin: 15px 0;
+                text-align: left;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="success">✅</div>
+            <h1>VPN 설치 준비 완료!</h1>
+            
+            <div class="info-card">
+                <h3>노드 정보</h3>
+                <p><strong>노드 ID:</strong> {token_info['node_id']}</p>
+                <p><strong>노드 타입:</strong> {token_info['node_type']}</p>
+                <p><strong>토큰:</strong> {token[:8]}...</p>
+            </div>
+            
+            <h2>설치 방법을 선택하세요:</h2>
+            
+            <a href="{server_url}/one-click/{token}" class="button">
+                🚀 원클릭 자동 설치
+            </a>
+            
+            <div style="margin-top: 30px;">
+                <h3>또는 수동 설치:</h3>
+                <div class="code-block">
+                    curl -X POST {server_url}/nodes/register \\<br>
+                    &nbsp;&nbsp;-H "Authorization: Bearer test-token-123" \\<br>
+                    &nbsp;&nbsp;-H "Content-Type: application/json" \\<br>
+                    &nbsp;&nbsp;-d '{{"node_id": "{token_info['node_id']}", "node_type": "{token_info['node_type']}"}}'
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html_content
 
 @router.get("/mobile-join/{token}", response_class=HTMLResponse)
 async def mobile_join_page(token: str):
