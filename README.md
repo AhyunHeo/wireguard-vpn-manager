@@ -77,6 +77,12 @@ chmod +x scripts/*.sh
 ./scripts/test-local.sh
 ```
 
+#### ⚠️ Windows Docker Desktop 사용 시 주의사항
+Windows에서 Docker Desktop을 사용하는 경우:
+- `localhost:8090` 대신 `본인IP:8090` 사용 필요 (예: `192.168.0.68:8090`)
+- WSL2 백엔드를 사용하면 Docker가 별도 가상 네트워크에서 실행됩니다
+- 확인 방법: `ipconfig`로 IPv4 주소 확인 후 해당 IP 사용
+
 ### 4. 프로덕션 배포
 ```bash
 # 환경 설정

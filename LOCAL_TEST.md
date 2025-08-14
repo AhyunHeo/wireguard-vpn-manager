@@ -29,8 +29,12 @@ chmod +x scripts/*.sh
 
 ### Step 3: 서비스 확인
 ```bash
-# 헬스체크
+# 헬스체크 (Linux/Mac 또는 Docker 직접 설치)
 curl http://localhost:8090/health
+
+# Windows Docker Desktop 사용 시 (본인 IP 사용)
+# ipconfig로 확인한 IP 사용 (예: 192.168.0.68)
+curl http://192.168.0.68:8090/health
 
 # 정상 응답 확인
 # {"status":"healthy","service":"vpn-manager"}
