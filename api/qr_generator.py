@@ -157,7 +157,7 @@ async def vpn_qr_page(request: Request):
                 <h2>📱 QR 코드</h2>
                 <div id="qrCode"></div>
                 <div class="url-display" id="joinUrl"></div>
-                <button class="copy-btn" onclick="copyUrl()">URL 복사</button>
+                <button class="copy-btn" onclick="copyUrl()">자동 설치 URL 복사</button>
             </div>
             
             <div class="instructions">
@@ -302,7 +302,7 @@ async def generate_qr(request: Request, qr_request: QRGenerateRequest):
 @router.get("/join/{token}", response_class=HTMLResponse)
 async def join_page(token: str, request: Request):
     """
-    VPN 연결 페이지 (QR 스캔 또는 URL 클릭 후 리다이렉트되는 페이지)
+    VPN 연결 페이지 (QR 스캔 또는 URL 클릭 후 자동 설치 페이지로 리다이렉트)
     """
     # 토큰 검증
     if token not in token_store:
@@ -316,105 +316,18 @@ async def join_page(token: str, request: Request):
     # 서버 URL 가져오기
     server_url = str(request.url).split('/join')[0]
     
+    # 자동 설치 페이지로 즉시 리다이렉트
     html_content = f"""
     <!DOCTYPE html>
     <html lang="ko">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>VPN 자동 설치</title>
-        <style>
-            body {{
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                margin: 0;
-                padding: 20px;
-            }}
-            .container {{
-                background: white;
-                border-radius: 20px;
-                padding: 40px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                max-width: 600px;
-                width: 100%;
-                text-align: center;
-            }}
-            h1 {{
-                color: #333;
-                margin-bottom: 30px;
-            }}
-            .info-card {{
-                background: #f8f9fa;
-                border-radius: 15px;
-                padding: 20px;
-                margin: 20px 0;
-            }}
-            .success {{
-                color: #28a745;
-                font-size: 60px;
-                margin: 20px 0;
-            }}
-            .button {{
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                border: none;
-                padding: 15px 30px;
-                border-radius: 50px;
-                font-size: 18px;
-                cursor: pointer;
-                margin: 10px;
-                display: inline-block;
-                text-decoration: none;
-            }}
-            .button:hover {{
-                transform: translateY(-2px);
-                box-shadow: 0 10px 20px rgba(0,0,0,0.2);
-            }}
-            .code-block {{
-                background: #333;
-                color: #0f0;
-                padding: 15px;
-                border-radius: 10px;
-                font-family: monospace;
-                font-size: 14px;
-                overflow-x: auto;
-                margin: 15px 0;
-                text-align: left;
-            }}
-        </style>
+        <meta http-equiv="refresh" content="0; url={server_url}/auto-install/{token}">
+        <title>VPN 설치 페이지로 이동 중...</title>
     </head>
     <body>
-        <div class="container">
-            <div class="success">✅</div>
-            <h1>VPN 설치 준비 완료!</h1>
-            
-            <div class="info-card">
-                <h3>노드 정보</h3>
-                <p><strong>노드 ID:</strong> {token_info['node_id']}</p>
-                <p><strong>노드 타입:</strong> {token_info['node_type']}</p>
-                <p><strong>토큰:</strong> {token[:8]}...</p>
-            </div>
-            
-            <h2>설치 방법을 선택하세요:</h2>
-            
-            <a href="{server_url}/one-click/{token}" class="button">
-                🚀 원클릭 자동 설치
-            </a>
-            
-            <div style="margin-top: 30px;">
-                <h3>또는 수동 설치:</h3>
-                <div class="code-block">
-                    curl -X POST {server_url}/nodes/register \\<br>
-                    &nbsp;&nbsp;-H "Authorization: Bearer test-token-123" \\<br>
-                    &nbsp;&nbsp;-H "Content-Type: application/json" \\<br>
-                    &nbsp;&nbsp;-d '{{"node_id": "{token_info['node_id']}", "node_type": "{token_info['node_type']}"}}'
-                </div>
-            </div>
-        </div>
+        <p>자동 설치 페이지로 이동 중입니다...</p>
+        <p>자동으로 이동되지 않으면 <a href="{server_url}/auto-install/{token}">여기를 클릭</a>하세요.</p>
     </body>
     </html>
     """
