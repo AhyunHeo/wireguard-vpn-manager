@@ -206,7 +206,7 @@ async def vpn_qr_page(request: Request):
                     
                     // QR 코드 표시
                     document.getElementById('qrCode').innerHTML = 
-                        `<img src="${data.qr_code}" alt="QR Code" />`;
+                        '<img src="' + data.qr_code + '" alt="QR Code" />';
                     document.getElementById('joinUrl').textContent = data.join_url;
                     document.getElementById('qrContainer').style.display = 'block';
                     
