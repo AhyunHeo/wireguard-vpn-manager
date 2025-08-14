@@ -336,6 +336,13 @@ async def get_wireguard_status(token: str = Depends(verify_token)):
             "peer_count": 0
         }
 
+# 웹 기반 설치 라우터 추가
+from web_installer import router as web_installer_router
+from qr_generator import router as qr_generator_router
+
+app.include_router(web_installer_router, tags=["Web Installer"])
+app.include_router(qr_generator_router, tags=["QR Generator"])
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8090)
