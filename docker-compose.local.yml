@@ -7,6 +7,7 @@ services:
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
+    privileged: true  # WireGuard 인터페이스 관리를 위한 권한
     environment:
       - PUID=1000
       - PGID=1000

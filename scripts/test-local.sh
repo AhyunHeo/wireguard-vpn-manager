@@ -14,6 +14,18 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# .env 파일 확인 및 생성
+if [ ! -f .env ]; then
+    echo -e "${YELLOW}[INFO] .env 파일이 없습니다. .env.example에서 복사합니다.${NC}"
+    if [ -f .env.example ]; then
+        cp .env.example .env
+        echo -e "${GREEN}[SUCCESS] .env 파일이 생성되었습니다.${NC}"
+    else
+        echo -e "${RED}[ERROR] .env.example 파일을 찾을 수 없습니다.${NC}"
+        exit 1
+    fi
+fi
+
 # 로컬 환경변수 설정
 export SERVERURL=localhost
 export API_TOKEN=test-token-123
@@ -40,7 +52,10 @@ docker-compose -f docker-compose.local.yml up -d
 
 # 서비스 시작 대기
 echo -e "${GREEN}[INFO] 서비스 시작 대기 중...${NC}"
-sleep 15
+echo "  PostgreSQL 초기화 대기 (10초)..."
+sleep 10
+echo "  API 서버 시작 대기 (10초)..."
+sleep 10
 
 # API 헬스체크
 echo -e "${GREEN}[INFO] API 서버 상태 확인 중...${NC}"

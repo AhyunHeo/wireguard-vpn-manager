@@ -2,14 +2,34 @@ from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
 from typing import List, Optional
 import os
 import base64
+import time
 from datetime import datetime
 
 from database import SessionLocal, engine, Base
 from models import Node, NodeCreate, NodeResponse, NodeStatus
 from wireguard_manager import WireGuardManager
+
+# DB 연결 재시도 함수
+def wait_for_db(max_retries=30):
+    """데이터베이스 연결이 준비될 때까지 대기"""
+    for i in range(max_retries):
+        try:
+            # 연결 테스트
+            conn = engine.connect()
+            conn.close()
+            print("Database connected successfully!")
+            return True
+        except OperationalError:
+            print(f"Waiting for database... ({i+1}/{max_retries})")
+            time.sleep(2)
+    raise Exception("Could not connect to database after 30 attempts")
+
+# DB 연결 대기
+wait_for_db()
 
 # 데이터베이스 초기화
 Base.metadata.create_all(bind=engine)
