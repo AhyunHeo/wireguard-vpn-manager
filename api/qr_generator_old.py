@@ -30,7 +30,7 @@ async def vpn_qr_page(request: Request):
     플랫폼 관리자가 접속해서 QR 코드를 생성
     """
     
-    return HTMLResponse(content="""
+    html_content = """
     <!DOCTYPE html>
     <html lang="ko">
     <head>
@@ -205,14 +205,8 @@ async def vpn_qr_page(request: Request):
                     const data = await response.json();
                     
                     // QR 코드 표시
-                    var qrImage = document.createElement('img');
-                    qrImage.src = data.qr_code;
-                    qrImage.alt = 'QR Code';
-                    
-                    var qrContainer = document.getElementById('qrCode');
-                    qrContainer.innerHTML = '';
-                    qrContainer.appendChild(qrImage);
-                    
+                    document.getElementById('qrCode').innerHTML = 
+                        '<img src="' + data.qr_code + '" alt="QR Code" />';
                     document.getElementById('joinUrl').textContent = data.join_url;
                     document.getElementById('qrContainer').style.display = 'block';
                     
@@ -242,18 +236,20 @@ async def vpn_qr_page(request: Request):
                             document.execCommand('copy');
                             alert('URL이 복사되었습니다!');
                         } catch (err) {
-                            alert('복사 실패. URL을 수동으로 복사하세요: ' + url);
+                            alert('복사 실패. URL을 수동으로 복사하세요:\n' + url);
                         }
                         document.body.removeChild(textArea);
                     }
                 } catch (err) {
-                    alert('복사 실패. URL을 수동으로 복사하세요: ' + url);
+                    alert('복사 실패. URL을 수동으로 복사하세요:\n' + url);
                 }
             }
         </script>
     </body>
     </html>
-    """)
+    """
+    
+    return html_content
 
 @router.post("/api/generate-qr")
 async def generate_qr(request: Request, qr_request: QRGenerateRequest):
@@ -419,4 +415,159 @@ async def join_page(token: str, request: Request):
     </html>
     """
     
-    return HTMLResponse(content=html_content)
+    return html_content
+
+@router.get("/mobile-join/{token}", response_class=HTMLResponse)
+async def mobile_join_page(token: str):
+    """
+    모바일 최적화 VPN 연결 페이지
+    QR 스캔 후 자동으로 이 페이지로 이동
+    """
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="ko">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>VPN 연결</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                margin: 0;
+                padding: 20px;
+            }}
+            .mobile-container {{
+                background: white;
+                border-radius: 20px;
+                padding: 30px 20px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            }}
+            h1 {{
+                color: #333;
+                font-size: 24px;
+                text-align: center;
+                margin-bottom: 20px;
+            }}
+            .big-button {{
+                display: block;
+                width: 100%;
+                padding: 20px;
+                margin: 15px 0;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                border-radius: 15px;
+                font-size: 18px;
+                font-weight: bold;
+                text-align: center;
+                text-decoration: none;
+                box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            }}
+            .status {{
+                background: #f0f0f0;
+                padding: 15px;
+                border-radius: 10px;
+                margin: 20px 0;
+                text-align: center;
+            }}
+            .emoji {{
+                font-size: 60px;
+                text-align: center;
+                margin: 20px 0;
+            }}
+            .info {{
+                background: #e3f2fd;
+                padding: 15px;
+                border-radius: 10px;
+                margin: 15px 0;
+            }}
+            .step {{
+                background: #f8f9fa;
+                padding: 15px;
+                border-radius: 10px;
+                margin: 10px 0;
+                display: flex;
+                align-items: center;
+            }}
+            .step-number {{
+                background: #667eea;
+                color: white;
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-right: 15px;
+                font-weight: bold;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="mobile-container">
+            <div class="emoji">🔐</div>
+            <h1>VPN 간편 연결</h1>
+            
+            <div class="info">
+                <strong>노드 정보</strong><br>
+                토큰: {token[:8]}...
+            </div>
+            
+            <div class="status">
+                운영체제를 선택하세요
+            </div>
+            
+            <a href="intent://join#{token}#Intent;scheme=vpnmanager;package=com.vpnmanager;end" 
+               class="big-button">
+                📱 모바일 앱으로 연결
+            </a>
+            
+            <button onclick="installScript('linux')" class="big-button">
+                🐧 Linux에서 설치
+            </button>
+            
+            <button onclick="installScript('windows')" class="big-button">
+                🪟 Windows에서 설치
+            </button>
+            
+            <button onclick="installScript('mac')" class="big-button">
+                🍎 macOS에서 설치
+            </button>
+            
+            <div style="margin-top: 30px;">
+                <h3>수동 설치 방법:</h3>
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div>터미널 열기</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div>아래 명령어 실행</div>
+                </div>
+                <div style="background: #333; color: #0f0; padding: 15px; border-radius: 10px; font-family: monospace; font-size: 12px; overflow-x: auto;">
+                    curl -sSL http://vpn.server/join/{token} | bash
+                </div>
+            </div>
+        </div>
+        
+        <script>
+            function installScript(os) {{
+                const commands = {{
+                    linux: 'curl -sSL http://vpn.server/install/{token} | sudo bash',
+                    windows: 'Invoke-WebRequest http://vpn.server/install/{token} | iex',
+                    mac: 'curl -sSL http://vpn.server/install/{token} | bash'
+                }};
+                
+                // 명령어 복사
+                navigator.clipboard.writeText(commands[os]);
+                alert('설치 명령어가 복사되었습니다! 터미널에 붙여넣기 하세요.');
+            }}
+        </script>
+    </body>
+    </html>
+    """
+    
+    return html_content

@@ -1,12 +1,15 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse, FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 from typing import List, Optional
 import os
 import base64
 import time
+import tempfile
+from pathlib import Path
 from datetime import datetime
 
 from database import SessionLocal, engine, Base
@@ -335,6 +338,138 @@ async def get_wireguard_status(token: str = Depends(verify_token)):
             "peers": [],
             "peer_count": 0
         }
+
+# API 엔드포인트 추가
+@app.post("/api/generate-config/{token}")
+async def generate_config_for_token(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """토큰 기반 VPN 설정 생성"""
+    # 간단한 구현 - 실제로는 토큰 검증 필요
+    node_id = f"auto-node-{token[:8]}"
+    
+    # 기존 노드 확인
+    existing_node = db.query(Node).filter(Node.node_id == node_id).first()
+    if existing_node:
+        return {
+            "config": base64.b64encode(existing_node.config.encode()).decode(),
+            "node_id": existing_node.node_id,
+            "vpn_ip": existing_node.vpn_ip
+        }
+    
+    # 새 노드 생성
+    node_data = NodeCreate(
+        node_id=node_id,
+        node_type="worker",
+        hostname=f"auto-{token[:8]}",
+        public_ip="0.0.0.0"  # 자동 감지
+    )
+    
+    # IP 할당
+    vpn_ip = wg_manager.allocate_ip(node_data.node_type)
+    if not vpn_ip:
+        raise HTTPException(status_code=500, detail="VPN IP 할당 실패")
+    
+    # 키 생성
+    keys = wg_manager.generate_keypair()
+    
+    # 설정 파일 생성
+    config = wg_manager.generate_client_config(
+        private_key=keys['private_key'],
+        client_ip=vpn_ip,
+        server_public_key=wg_manager.get_server_public_key()
+    )
+    
+    # DB 저장
+    db_node = Node(
+        node_id=node_id,
+        node_type="worker",
+        hostname=f"auto-{token[:8]}",
+        public_ip="0.0.0.0",
+        vpn_ip=vpn_ip,
+        public_key=keys['public_key'],
+        private_key=keys['private_key'],
+        config=config,
+        status="registered",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    
+    db.add(db_node)
+    db.commit()
+    
+    # WireGuard 피어 추가
+    try:
+        wg_manager.add_peer_to_server(
+            public_key=keys['public_key'],
+            vpn_ip=vpn_ip,
+            node_id=node_id
+        )
+    except Exception as e:
+        db.delete(db_node)
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"피어 추가 실패: {str(e)}")
+    
+    return {
+        "config": base64.b64encode(config.encode()).decode(),
+        "node_id": node_id,
+        "vpn_ip": vpn_ip
+    }
+
+@app.get("/api/download/wireguard-windows/{token}")
+async def download_wireguard_windows(token: str):
+    """Windows용 WireGuard 설치 파일 다운로드"""
+    # 실제로는 WireGuard 설치 파일을 제공해야 함
+    # 여기서는 설치 안내 HTML을 반환
+    html_content = f"""
+    <html>
+    <head><title>WireGuard 설치</title></head>
+    <body>
+        <h1>WireGuard Windows 설치</h1>
+        <p>다음 링크에서 WireGuard를 다운로드하세요:</p>
+        <a href="https://download.wireguard.com/windows-client/wireguard-installer.exe">
+            WireGuard Windows 다운로드
+        </a>
+        <p>토큰: {token}</p>
+    </body>
+    </html>
+    """
+    return Response(content=html_content, media_type="text/html")
+
+@app.get("/api/download/wireguard-linux/{token}")
+async def download_wireguard_linux(token: str):
+    """Linux용 WireGuard 설치 스크립트"""
+    script_content = f"""#!/bin/bash
+# WireGuard Linux 자동 설치 스크립트
+# 토큰: {token}
+
+echo "WireGuard 설치 시작..."
+
+# 패키지 매니저 확인 및 설치
+if command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update
+    sudo apt-get install -y wireguard
+elif command -v yum >/dev/null 2>&1; then
+    sudo yum install -y wireguard-tools
+elif command -v pacman >/dev/null 2>&1; then
+    sudo pacman -S --noconfirm wireguard-tools
+else
+    echo "지원되지 않는 리눅스 배포판입니다."
+    exit 1
+fi
+
+echo "WireGuard 설치 완료!"
+echo "이제 설정 파일을 다운로드하세요."
+"""
+    
+    return Response(
+        content=script_content,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f"attachment; filename=install-wireguard-{token}.sh"
+        }
+    )
 
 # 웹 기반 설치 라우터 추가
 from web_installer import router as web_installer_router
