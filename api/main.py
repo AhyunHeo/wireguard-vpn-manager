@@ -339,9 +339,11 @@ async def get_wireguard_status(token: str = Depends(verify_token)):
 # 웹 기반 설치 라우터 추가
 from web_installer import router as web_installer_router
 from qr_generator import router as qr_generator_router
+from auto_installer import router as auto_installer_router
 
 app.include_router(web_installer_router, tags=["Web Installer"])
 app.include_router(qr_generator_router, tags=["QR Generator"])
+app.include_router(auto_installer_router, tags=["Auto Installer"])
 
 if __name__ == "__main__":
     import uvicorn
