@@ -1,0 +1,39 @@
+# 헬스체크
+# curl http://localhost:8090/health
+
+# 중앙서버 등록
+# curl -X POST http://localhost:8090/nodes/register \
+#   -H "Authorization: Bearer test-token-123" \
+#   -H "Content-Type: application/json" \
+#   -d '{
+#     "node_id": "central-server",
+#     "node_type": "central",
+#     "hostname": "central.local",
+#     "public_ip": "192.168.1.100"
+#   }'
+
+# 워커노드 1 등록
+# curl -X POST http://localhost:8090/nodes/register \
+#   -H "Authorization: Bearer test-token-123" \
+#   -H "Content-Type: application/json" \
+#   -d '{
+#     "node_id": "worker-node-1",
+#     "node_type": "worker",
+#     "hostname": "worker1.local",
+#     "public_ip": "192.168.1.101"
+#   }'
+
+# 워커노드 2 등록
+# curl -X POST http://localhost:8090/nodes/register \
+#   -H "Authorization: Bearer test-token-123" \
+#   -H "Content-Type: application/json" \
+#   -d '{
+#     "node_id": "worker-node-2",
+#     "node_type": "worker",
+#     "hostname": "worker2.local",
+#     "public_ip": "192.168.1.102"
+#   }'
+
+# 등록된 모든 노드 조회
+curl -H "Authorization: Bearer test-token-123" \
+  http://localhost:8090/nodes | python3 -m json.tool

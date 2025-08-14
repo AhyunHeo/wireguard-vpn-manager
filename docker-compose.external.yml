@@ -1,0 +1,110 @@
+version: '3.8'
+
+# 외부 접근용 설정
+# docker-compose.local.yml 대신 이 파일 사용
+
+services:
+  wireguard:
+    image: linuxserver/wireguard:latest
+    container_name: wireguard-server
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    privileged: true
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Seoul
+      - SERVERURL=${SERVERURL:-192.168.0.68}  # 실제 IP로 변경
+      - SERVERPORT=51820
+      - PEERS=100
+      - PEERDNS=auto
+      - INTERNAL_SUBNET=10.100.0.0/16
+      - ALLOWEDIPS=10.100.0.0/16
+      - LOG_CONFS=true
+    volumes:
+      - ./config:/config
+      - /lib/modules:/lib/modules
+    ports:
+      - "0.0.0.0:51820:51820/udp"  # 모든 인터페이스
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    restart: unless-stopped
+    networks:
+      vpn_net:
+        ipv4_address: 172.20.0.2
+
+  vpn-api:
+    build: ./api
+    container_name: vpn-api
+    privileged: true
+    environment:
+      - DATABASE_URL=postgresql://vpn:vpnpass@postgres:5432/vpndb
+      - WIREGUARD_CONFIG_PATH=/config
+      - API_PORT=8090
+      - API_TOKEN=test-token-123
+      - SERVERURL=${SERVERURL:-192.168.0.68}  # 실제 IP로 변경
+    volumes:
+      - ./config:/config
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "0.0.0.0:8090:8090"  # 모든 인터페이스에서 명시적으로 리스닝
+    depends_on:
+      - postgres
+      - wireguard
+    restart: unless-stopped
+    networks:
+      vpn_net:
+        ipv4_address: 172.20.0.3
+
+  postgres:
+    image: postgres:15
+    container_name: vpn-postgres
+    environment:
+      - POSTGRES_DB=vpndb
+      - POSTGRES_USER=vpn
+      - POSTGRES_PASSWORD=vpnpass
+    volumes:
+      - vpn_db_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"  # DB는 로컬만
+    restart: unless-stopped
+    networks:
+      vpn_net:
+        ipv4_address: 172.20.0.4
+
+  wireguard-ui:
+    image: ngoduykhanh/wireguard-ui:latest
+    container_name: wireguard-ui
+    environment:
+      - SENDGRID_API_KEY=
+      - EMAIL_FROM_ADDRESS=
+      - EMAIL_FROM_NAME=
+      - SESSION_SECRET=test-session-secret
+      - WGUI_USERNAME=admin
+      - WGUI_PASSWORD=admin123
+      - WGUI_ENDPOINT_ADDRESS=${SERVERURL:-192.168.0.68}
+      - WGUI_DNS=8.8.8.8
+      - WGUI_MTU=1420
+      - WGUI_PERSISTENT_KEEPALIVE=25
+      - WGUI_CONFIG_FILE_PATH=/config/wg0.conf
+    volumes:
+      - ./config:/config
+    ports:
+      - "0.0.0.0:5000:5000"  # 모든 인터페이스
+    depends_on:
+      - wireguard
+    networks:
+      vpn_net:
+        ipv4_address: 172.20.0.5
+
+networks:
+  vpn_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+volumes:
+  vpn_db_data:
