@@ -15,7 +15,7 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=Asia/Seoul
-      - SERVERURL=${SERVERURL:-192.168.0.68}  # 실제 IP로 변경
+      - SERVERURL=${SERVERURL:-192.168.1.100}  # 실제 IP로 변경
       - SERVERPORT=51820
       - PEERS=100
       - PEERDNS=auto
@@ -44,7 +44,7 @@ services:
       - WIREGUARD_CONFIG_PATH=/config
       - API_PORT=8090
       - API_TOKEN=test-token-123
-      - SERVERURL=${SERVERURL:-192.168.0.68}  # 실제 IP로 변경
+      - SERVERURL=${SERVERURL:-192.168.1.100}  # 실제 IP로 변경
     volumes:
       - ./config:/config
       - /var/run/docker.sock:/var/run/docker.sock
@@ -84,7 +84,7 @@ services:
       - SESSION_SECRET=test-session-secret
       - WGUI_USERNAME=admin
       - WGUI_PASSWORD=admin123
-      - WGUI_ENDPOINT_ADDRESS=${SERVERURL:-192.168.0.68}
+      - WGUI_ENDPOINT_ADDRESS=${SERVERURL:-192.168.1.100}
       - WGUI_DNS=8.8.8.8
       - WGUI_MTU=1420
       - WGUI_PERSISTENT_KEEPALIVE=25

@@ -33,8 +33,8 @@ chmod +x scripts/*.sh
 curl http://localhost:8090/health
 
 # Windows Docker Desktop 사용 시 (본인 IP 사용)
-# ipconfig로 확인한 IP 사용 (예: 192.168.0.68)
-curl http://192.168.0.68:8090/health
+# ipconfig로 확인한 IP 사용 (예: 192.168.1.100)
+curl http://192.168.1.100:8090/health
 
 # 정상 응답 확인
 # {"status":"healthy","service":"vpn-manager"}
@@ -129,7 +129,7 @@ curl -X POST http://localhost:8090/nodes/register \
 ip addr show  # Linux/Mac
 ipconfig      # Windows
 
-# 예: 192.168.0.10
+# 예: 192.168.1.100
 ```
 
 **워커 컴퓨터에서:**
@@ -137,7 +137,7 @@ ipconfig      # Windows
 #### 옵션 1: URL 클릭 방식 (비전공자용)
 ```
 1. 브라우저 열기
-2. URL 입력: http://192.168.0.10:8090/one-click/test-token
+2. URL 입력: http://192.168.1.100:8090/one-click/test-token
 3. "지금 시작하기" 클릭
 4. 자동 설치 진행
 ```
@@ -145,7 +145,7 @@ ipconfig      # Windows
 #### 옵션 2: 수동 설정 (개발자용)
 ```bash
 # 설정 받기
-curl -X POST http://192.168.0.10:8090/nodes/register \
+curl -X POST http://192.168.1.100:8090/nodes/register \
   -H "Authorization: Bearer test-token-123" \
   -H "Content-Type: application/json" \
   -d '{
