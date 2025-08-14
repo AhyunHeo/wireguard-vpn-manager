@@ -163,11 +163,3 @@ netstat -an | grep -E "8090|51820"
 # 외부에서 접근 테스트 (워커 노드에서)
 curl http://VPN_MANAGER_IP:8090/health
 ```
-
-## 📝 라이선스
-
-MIT License
-
-## 🤝 기여
-
-이슈와 PR을 환영합니다!
