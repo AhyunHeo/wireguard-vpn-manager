@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     iptables \
     qrencode \
     curl \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

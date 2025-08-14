@@ -54,8 +54,14 @@ docker-compose -f docker-compose.local.yml up -d
 echo -e "${GREEN}[INFO] 서비스 시작 대기 중...${NC}"
 echo "  PostgreSQL 초기화 대기 (10초)..."
 sleep 10
-echo "  API 서버 시작 대기 (10초)..."
-sleep 10
+
+# WireGuard 초기화
+echo -e "${GREEN}[INFO] WireGuard 초기화 중...${NC}"
+chmod +x scripts/init-wireguard.sh
+./scripts/init-wireguard.sh
+
+echo "  API 서버 시작 대기 (5초)..."
+sleep 5
 
 # API 헬스체크
 echo -e "${GREEN}[INFO] API 서버 상태 확인 중...${NC}"

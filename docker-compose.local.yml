@@ -35,6 +35,7 @@ services:
   vpn-api:
     build: ./api
     container_name: vpn-api
+    privileged: true  # Docker 명령 실행을 위한 권한
     environment:
       - DATABASE_URL=postgresql://vpn:vpnpass@postgres:5432/vpndb
       - WIREGUARD_CONFIG_PATH=/config
@@ -43,7 +44,7 @@ services:
       - SERVERURL=localhost
     volumes:
       - ./config:/config
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker 소켓 마운트
     ports:
       - 8090:8090
     depends_on:

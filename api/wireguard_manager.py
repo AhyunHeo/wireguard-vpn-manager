@@ -47,17 +47,30 @@ class WireGuardManager:
                 with open(pubkey_file, "r") as f:
                     return f.read().strip()
             
-            # wg 명령으로 조회
-            result = subprocess.run(
-                ["wg", "show", self.interface, "public-key"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            return result.stdout.strip()
+            # Docker 컨테이너에서 실행하는 경우
+            if os.path.exists("/var/run/docker.sock"):
+                result = subprocess.run(
+                    ["docker", "exec", "wireguard-server", "wg", "show", self.interface, "public-key"],
+                    capture_output=True,
+                    text=True
+                )
+            else:
+                # 로컬 환경에서 직접 실행
+                result = subprocess.run(
+                    ["wg", "show", self.interface, "public-key"],
+                    capture_output=True,
+                    text=True
+                )
+            
+            if result.returncode == 0:
+                return result.stdout.strip()
+            
+            # 실패 시 기본값 반환
+            logger.warning(f"서버 공개키 조회 실패, 기본값 사용")
+            return "SERVER_PUBLIC_KEY_NOT_FOUND"
+            
         except Exception as e:
             logger.error(f"서버 공개키 조회 실패: {e}")
-            # 기본값 반환 (실제 환경에서는 설정 필요)
             return "SERVER_PUBLIC_KEY_NOT_FOUND"
     
     def create_peer_config(self, node_id: str, vpn_ip: str, 
@@ -85,23 +98,35 @@ PersistentKeepalive = 25
     def add_peer_to_server(self, public_key: str, vpn_ip: str, node_id: str):
         """서버에 피어 추가"""
         try:
-            # wg 명령으로 동적 추가
-            cmd = [
-                "wg", "set", self.interface,
-                "peer", public_key,
-                "allowed-ips", f"{vpn_ip}/32"
-            ]
+            # Docker 컨테이너에서 실행하는 경우 docker exec 사용
+            if os.path.exists("/var/run/docker.sock"):
+                cmd = [
+                    "docker", "exec", "wireguard-server",
+                    "wg", "set", self.interface,
+                    "peer", public_key,
+                    "allowed-ips", f"{vpn_ip}/32"
+                ]
+            else:
+                # 로컬 환경에서 직접 실행
+                cmd = [
+                    "wg", "set", self.interface,
+                    "peer", public_key,
+                    "allowed-ips", f"{vpn_ip}/32"
+                ]
             
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
                 raise Exception(f"wg set 실패: {result.stderr}")
             
-            # 설정 저장
-            save_cmd = ["wg-quick", "save", self.interface]
-            save_result = subprocess.run(save_cmd, capture_output=True, text=True)
-            
-            if save_result.returncode != 0:
-                logger.warning(f"설정 저장 실패: {save_result.stderr}")
+            # 설정 저장 (에러 무시)
+            try:
+                if os.path.exists("/var/run/docker.sock"):
+                    save_cmd = ["docker", "exec", "wireguard-server", "wg-quick", "save", self.interface]
+                else:
+                    save_cmd = ["wg-quick", "save", self.interface]
+                subprocess.run(save_cmd, capture_output=True, text=True, timeout=5)
+            except:
+                pass  # 저장 실패는 무시
             
             logger.info(f"피어 추가 성공: {node_id} ({vpn_ip})")
             
@@ -112,19 +137,34 @@ PersistentKeepalive = 25
     def remove_peer_from_server(self, public_key: str):
         """서버에서 피어 제거"""
         try:
-            cmd = [
-                "wg", "set", self.interface,
-                "peer", public_key,
-                "remove"
-            ]
+            # Docker 컨테이너에서 실행하는 경우
+            if os.path.exists("/var/run/docker.sock"):
+                cmd = [
+                    "docker", "exec", "wireguard-server",
+                    "wg", "set", self.interface,
+                    "peer", public_key,
+                    "remove"
+                ]
+            else:
+                cmd = [
+                    "wg", "set", self.interface,
+                    "peer", public_key,
+                    "remove"
+                ]
             
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
                 raise Exception(f"wg set 실패: {result.stderr}")
             
-            # 설정 저장
-            save_cmd = ["wg-quick", "save", self.interface]
-            subprocess.run(save_cmd, capture_output=True, text=True)
+            # 설정 저장 (에러 무시)
+            try:
+                if os.path.exists("/var/run/docker.sock"):
+                    save_cmd = ["docker", "exec", "wireguard-server", "wg-quick", "save", self.interface]
+                else:
+                    save_cmd = ["wg-quick", "save", self.interface]
+                subprocess.run(save_cmd, capture_output=True, text=True, timeout=5)
+            except:
+                pass
             
             logger.info(f"피어 제거 성공: {public_key[:8]}...")
             
@@ -135,12 +175,19 @@ PersistentKeepalive = 25
     def get_peer_status(self, public_key: str) -> Dict:
         """특정 피어의 상태 조회"""
         try:
-            result = subprocess.run(
-                ["wg", "show", self.interface, "dump"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
+            # Docker 컨테이너에서 실행하는 경우
+            if os.path.exists("/var/run/docker.sock"):
+                result = subprocess.run(
+                    ["docker", "exec", "wireguard-server", "wg", "show", self.interface, "dump"],
+                    capture_output=True,
+                    text=True
+                )
+            else:
+                result = subprocess.run(
+                    ["wg", "show", self.interface, "dump"],
+                    capture_output=True,
+                    text=True
+                )
             
             # dump 형식 파싱
             for line in result.stdout.strip().split('\n')[1:]:  # 첫 줄은 인터페이스 정보
@@ -174,12 +221,19 @@ PersistentKeepalive = 25
     def get_server_status(self) -> Dict:
         """WireGuard 서버 전체 상태 조회"""
         try:
-            result = subprocess.run(
-                ["wg", "show", self.interface],
-                capture_output=True,
-                text=True,
-                check=True
-            )
+            # Docker 컨테이너에서 실행하는 경우
+            if os.path.exists("/var/run/docker.sock"):
+                result = subprocess.run(
+                    ["docker", "exec", "wireguard-server", "wg", "show", self.interface],
+                    capture_output=True,
+                    text=True
+                )
+            else:
+                result = subprocess.run(
+                    ["wg", "show", self.interface],
+                    capture_output=True,
+                    text=True
+                )
             
             interface_info = {}
             peers = []
