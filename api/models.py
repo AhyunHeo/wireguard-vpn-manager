@@ -22,6 +22,22 @@ class Node(Base):
     status = Column(String, default="registered")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # 워커노드 플랫폼 관련 필드
+    description = Column(String)  # 워커노드 설명 (예: "2080-test")
+    central_server_ip = Column(String)  # 중앙서버 IP (VPN 네트워크 내)
+    docker_env_vars = Column(Text)  # Docker Compose 환경변수 저장
+
+class QRToken(Base):
+    """QR 코드 토큰 저장"""
+    __tablename__ = "qr_tokens"
+    
+    token = Column(String, primary_key=True, index=True)
+    node_id = Column(String, nullable=False)
+    node_type = Column(String, default="worker")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used = Column(Boolean, default=False)
 
 # Pydantic 모델
 class NodeCreate(BaseModel):
@@ -30,14 +46,18 @@ class NodeCreate(BaseModel):
     node_type: str = Field(..., description="노드 타입 (central/worker)")
     hostname: str = Field(..., description="호스트명")
     public_ip: Optional[str] = Field(None, description="공인 IP (선택)")
+    description: Optional[str] = Field(None, description="워커노드 설명")
+    central_server_ip: Optional[str] = Field(None, description="중앙서버 IP (VPN 내부)")
 
     class Config:
         schema_extra = {
             "example": {
-                "node_id": "worker-node-1",
+                "node_id": "NODE-20250710-865",
                 "node_type": "worker",
                 "hostname": "worker01.example.com",
-                "public_ip": "203.0.113.1"
+                "public_ip": "203.0.113.1",
+                "description": "2080-test",
+                "central_server_ip": "10.100.0.1"
             }
         }
 

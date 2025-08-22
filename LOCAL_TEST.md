@@ -336,13 +336,13 @@ docker-compose -f docker-compose.local.yml down -v
 
 ## 📊 모니터링
 
-### Python 모니터링 스크립트
+### API 상태 확인
 ```bash
-# 실시간 상태 모니터링
-python3 monitoring/vpn-status.py \
-  --api-url http://localhost:8090 \
-  --api-token test-token-123 \
-  --watch
+# 노드 목록 조회
+curl -H "Authorization: Bearer test-token-123" http://localhost:8090/nodes
+
+# WireGuard 서버 상태
+curl -H "Authorization: Bearer test-token-123" http://localhost:8090/status/wireguard
 ```
 
 ### 로그 확인

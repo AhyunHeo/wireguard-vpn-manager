@@ -7,331 +7,276 @@
 ```
 [인터넷]
     │
-    ├── [VPN Manager Server] (독립 서버)
-    │    ├─ WireGuard Server (10.100.0.254)
-    │    └─ Management API (8090)
+    ├── [VPN Manager Server] (공인 IP 필요)
+    │    ├─ WireGuard Server
+    │    ├─ Management API (8090)
+    │    └─ Web Dashboard (5000)
     │
-    ├── [Central Server] (NAT 환경 가능)
-    │    ├─ VPN Client (10.100.0.1)
-    │    ├─ API Server (8000)
-    │    └─ FL Server (5002)
+    ├── [Central Servers] (NAT 환경 가능)
+    │    ├─ Central 1: VPN Client (10.100.0.2)
+    │    ├─ Central 2: VPN Client (10.100.0.3)
+    │    └─ ... (최대 5개)
     │
     └── [Worker Nodes] (NAT 환경 가능)
-         ├─ Worker 1: VPN Client (10.100.1.1)
-         ├─ Worker 2: VPN Client (10.100.1.2)
-         └─ Worker N: VPN Client (10.100.1.N)
+         ├─ Worker 1: VPN Client (10.100.1.2)
+         ├─ Worker 2: VPN Client (10.100.1.3)
+         └─ ... (최대 10개)
 ```
 
-## 🚀 배포 단계
+## 🚀 빠른 시작 (원클릭 설치)
 
 ### 1단계: VPN Manager 서버 배포
 
-#### 1.1 독립 서버 준비
 ```bash
-# VPN Manager 전용 서버 (공인 IP 필요)
-ssh vpn-server
-
-# 프로젝트 클론
+# VPN Manager 서버 (공인 IP 필요)
 git clone https://github.com/your-org/wireguard-vpn-manager.git
 cd wireguard-vpn-manager
 
-# 실행 권한 부여
-chmod +x scripts/*.sh
-```
-
-#### 1.2 환경 설정
-```bash
-# .env 파일 생성
+# 환경 설정
 cp .env.example .env
+nano .env  # SERVERURL과 LOCAL_SERVER_IP 설정
 
-# .env 파일 편집
-nano .env
-# SERVERURL=your-public-ip-or-domain
-# API_TOKEN=secure-random-token-here
+# 서비스 시작
+docker-compose up -d
 ```
 
-#### 1.3 배포
+### 2단계: 중앙서버 등록 및 설치
+
+#### 방법 1: 웹 인터페이스 사용 (권장)
+
+1. 웹 브라우저에서 접속: `http://<VPN_SERVER_IP>:5000`
+2. "중앙서버 등록" 클릭
+3. QR 코드 생성 또는 설치 URL 복사
+4. 중앙서버에서 설치 페이지 접속
+5. Windows `.bat` 파일 다운로드 및 실행
+
+#### 방법 2: API 직접 사용
+
 ```bash
-./scripts/deploy.sh
+# 중앙서버 등록 페이지 접속
+http://<VPN_SERVER_IP>:8090/central/setup
+
+# QR 코드 생성 후 설치 페이지로 이동
+# Windows 설치 파일(.bat) 다운로드 및 실행
 ```
 
-#### 1.4 확인
-```bash
-# API 상태 확인
-curl http://localhost:8090/health
+### 3단계: 워커노드 등록 및 설치
 
-# 환경변수 저장 (나중에 사용)
-echo "VPN_API_URL=http://$(curl -s ifconfig.me):8090"
-echo "API_TOKEN=$(grep API_TOKEN .env | cut -d= -f2)"
+#### 방법 1: 웹 인터페이스 사용 (권장)
+
+1. 웹 브라우저에서 접속: `http://<VPN_SERVER_IP>:5000`
+2. "워커노드 등록" 클릭
+3. 노드 정보 입력 (ID, 설명, 중앙서버 IP)
+4. QR 코드 생성 또는 설치 URL 복사
+5. 워커노드에서 설치 페이지 접속
+6. Windows `.bat` 파일 다운로드 및 실행
+
+#### 방법 2: API 직접 사용
+
+```bash
+# 워커노드 등록 페이지 접속
+http://<VPN_SERVER_IP>:8090/worker/setup
+
+# QR 코드 생성 후 설치 페이지로 이동
+# Windows 설치 파일(.bat) 다운로드 및 실행
 ```
 
-### 2단계: 중앙서버 VPN 통합
+## 🔧 수동 설치 (Linux/Mac)
 
-#### 2.1 중앙서버 접속
+### 중앙서버 수동 설치
+
 ```bash
-ssh central-server
+# 1. WireGuard 설치
+sudo apt update && sudo apt install -y wireguard
+
+# 2. VPN Manager에서 설정 파일 다운로드
+wget http://<VPN_SERVER_IP>:8090/api/clients/central-server-01/config -O wg0.conf
+sudo mv wg0.conf /etc/wireguard/
+
+# 3. VPN 연결
+sudo wg-quick up wg0
+sudo systemctl enable wg-quick@wg0
+
+# 4. Docker Compose 실행 (VPN 전용 모드)
 cd distributed-ai-platform/central-server
+docker-compose -f docker-compose.vpn.yml up -d
 ```
 
-#### 2.2 VPN 설정 스크립트 생성
+### 워커노드 수동 설치
+
 ```bash
-cat > setup-vpn.sh << 'EOF'
-#!/bin/bash
+# 1. WireGuard 설치
+sudo apt update && sudo apt install -y wireguard
 
-VPN_API_URL="${VPN_API_URL}"
-API_TOKEN="${API_TOKEN}"
+# 2. VPN Manager에서 설정 파일 다운로드
+wget http://<VPN_SERVER_IP>:8090/api/clients/worker-01/config -O wg0.conf
+sudo mv wg0.conf /etc/wireguard/
 
-echo "[INFO] 중앙서버 VPN 설정 시작"
+# 3. VPN 연결
+sudo wg-quick up wg0
+sudo systemctl enable wg-quick@wg0
 
-# VPN 관리 서버에 등록
-RESPONSE=$(curl -s -X POST "$VPN_API_URL/nodes/register" \
-    -H "Authorization: Bearer $API_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "node_id": "central-server",
-        "node_type": "central",
-        "hostname": "'$(hostname)'",
-        "public_ip": "'$(curl -s ifconfig.me)'"
-    }')
-
-# 설정 추출
-CONFIG_BASE64=$(echo "$RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin)['config'])")
-VPN_IP=$(echo "$RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin)['vpn_ip'])")
-
-# WireGuard 설정 저장
-mkdir -p ./wireguard
-echo "$CONFIG_BASE64" | base64 -d > ./wireguard/wg0.conf
-chmod 600 ./wireguard/wg0.conf
-
-echo "[SUCCESS] VPN IP: $VPN_IP"
-EOF
-
-chmod +x setup-vpn.sh
+# 4. 워커노드 컨테이너 실행
+docker run -d \
+  --name worker-node \
+  --cap-add NET_ADMIN \
+  --env NODE_ID=worker-01 \
+  --env CENTRAL_SERVER_IP=10.100.0.2 \
+  --env HOST_IP=$(ip addr show wg0 | grep inet | awk '{print $2}' | cut -d/ -f1) \
+  your-worker-image:tag
 ```
 
-#### 2.3 VPN 설정 실행
+## 📊 관리 및 모니터링
+
+### VPN Manager 대시보드
+
+- URL: `http://<VPN_SERVER_IP>:5000`
+- 기능:
+  - 실시간 노드 상태 모니터링
+  - 노드 등록/삭제
+  - QR 코드 생성
+  - 연결 상태 확인
+
+### API 엔드포인트
+
 ```bash
-export VPN_API_URL=http://vpn-server-ip:8090
-export API_TOKEN=your-api-token
-./setup-vpn.sh
+# 노드 목록 조회
+curl -H "X-API-Key: test-token-123" http://<VPN_SERVER_IP>:8090/api/nodes/list
+
+# 노드 상태 확인
+curl -H "X-API-Key: test-token-123" http://<VPN_SERVER_IP>:8090/api/nodes/status/<node-id>
+
+# VPN 상태 모니터링
+curl http://<VPN_SERVER_IP>:8090/api/vpn/status
 ```
 
-#### 2.4 Docker Compose 수정
-```yaml
-# docker-compose.yml에 추가
-services:
-  wireguard-client:
-    image: linuxserver/wireguard:latest
-    container_name: central-wireguard
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    volumes:
-      - ./wireguard:/config
-      - /lib/modules:/lib/modules
-    sysctls:
-      - net.ipv4.conf.all.src_valid_mark=1
-    restart: unless-stopped
+## 🔍 연결 테스트
 
-  api:
-    # 기존 설정...
-    environment:
-      - CENTRAL_SERVER_IP=10.100.0.1  # VPN IP 사용
-    depends_on:
-      - wireguard-client
-    network_mode: "service:wireguard-client"  # VPN 네트워크 사용
-```
+### 중앙서버에서
 
-#### 2.5 재시작
 ```bash
-docker-compose down
-docker-compose up -d
+# VPN 연결 확인
+ping -c 1 10.100.0.1  # VPN 서버
+
+# 워커노드 연결 확인
+ping -c 1 10.100.1.2  # Worker 1
+ping -c 1 10.100.1.3  # Worker 2
 ```
 
-### 3단계: 워커노드 VPN 통합
+### 워커노드에서
 
-#### 3.1 각 워커노드에서 실행
 ```bash
-ssh worker-node-X
-cd distributed-ai-platform/worker-node
+# 중앙서버 연결 확인
+ping -c 1 10.100.0.2  # Central Server
+
+# API 연결 테스트
+curl http://10.100.0.2:8000/health
 ```
 
-#### 3.2 VPN 설정 스크립트 생성
-```bash
-cat > setup-vpn.sh << 'EOF'
-#!/bin/bash
-
-VPN_API_URL="${VPN_API_URL}"
-API_TOKEN="${API_TOKEN}"
-NODE_ID="${NODE_ID:-$(hostname)}"
-
-echo "[INFO] 워커노드 VPN 설정 시작"
-
-# VPN 관리 서버에 등록
-RESPONSE=$(curl -s -X POST "$VPN_API_URL/nodes/register" \
-    -H "Authorization: Bearer $API_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "node_id": "'$NODE_ID'",
-        "node_type": "worker",
-        "hostname": "'$(hostname)'",
-        "public_ip": "'$(curl -s ifconfig.me)'"
-    }')
-
-# 설정 추출
-CONFIG_BASE64=$(echo "$RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin)['config'])")
-VPN_IP=$(echo "$RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin)['vpn_ip'])")
-
-# WireGuard 설정 저장
-mkdir -p ./wireguard
-echo "$CONFIG_BASE64" | base64 -d > ./wireguard/wg0.conf
-chmod 600 ./wireguard/wg0.conf
-
-# 환경변수 파일 생성
-cat > .env << EOL
-NODE_ID=$NODE_ID
-VPN_IP=$VPN_IP
-HOST_IP=$VPN_IP
-CENTRAL_SERVER_IP=10.100.0.1
-API_TOKEN=secure_token_123
-EOL
-
-echo "[SUCCESS] VPN IP: $VPN_IP"
-EOF
-
-chmod +x setup-vpn.sh
-```
-
-#### 3.3 VPN 설정 실행
-```bash
-export VPN_API_URL=http://vpn-server-ip:8090
-export API_TOKEN=your-api-token
-export NODE_ID=worker-node-1  # 각 노드별로 고유하게 설정
-./setup-vpn.sh
-```
-
-#### 3.4 Docker Compose 수정
-```yaml
-# docker-compose.yml에 추가
-services:
-  wireguard-client:
-    image: linuxserver/wireguard:latest
-    container_name: worker-wireguard
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    volumes:
-      - ./wireguard:/config
-      - /lib/modules:/lib/modules
-    sysctls:
-      - net.ipv4.conf.all.src_valid_mark=1
-    restart: unless-stopped
-
-  worker-api:
-    # 기존 설정...
-    environment:
-      - CENTRAL_SERVER_IP=10.100.0.1  # VPN IP 사용
-      - HOST_IP=${VPN_IP}
-    depends_on:
-      - wireguard-client
-    network_mode: "service:wireguard-client"  # VPN 네트워크 사용
-```
-
-#### 3.5 재시작
-```bash
-docker-compose down
-docker-compose up -d
-```
-
-## 🔍 통합 확인
-
-### 1. VPN Manager에서 전체 노드 상태 확인
-```bash
-# VPN Manager 서버에서
-cd wireguard-vpn-manager
-python3 monitoring/vpn-status.py --watch
-```
-
-### 2. 중앙서버에서 워커노드 연결 테스트
-```bash
-# 중앙서버 컨테이너에서
-docker exec central-server-api ping -c 1 10.100.1.1  # Worker 1
-docker exec central-server-api ping -c 1 10.100.1.2  # Worker 2
-```
-
-### 3. 워커노드에서 중앙서버 API 테스트
-```bash
-# 워커노드 컨테이너에서
-docker exec worker-node-client curl http://10.100.0.1:8000/health
-```
-
-## 📝 환경변수 정리
+## 📝 환경변수 설정
 
 ### VPN Manager (.env)
+
 ```env
-SERVERURL=vpn.example.com
-API_TOKEN=secure-random-token
+# 서버 설정
+SERVERURL=192.168.0.68  # 실제 서버 IP 또는 도메인
+LOCAL_SERVER_IP=192.168.0.68
+SERVERPORT=51820
+
+# API 설정
+API_TOKEN=test-token-123
+
+# 네트워크 설정
+INTERNAL_SUBNET=10.100.0.0/16
 ```
 
-### 중앙서버 (docker-compose.yml)
-```yaml
-environment:
-  - VPN_ENABLED=true
-  - VPN_IP=10.100.0.1
+### 중앙서버 (.env)
+
+```env
+# VPN 설정
+VPN_IP=10.100.0.2  # VPN Manager에서 할당받은 IP
+
+# 포트 설정
+API_PORT=8000
+FL_PORT=5002
+DASHBOARD_PORT=5000
+DB_PORT=5432
+MONGO_PORT=27017
+
+# JWT 설정
+JWT_SECRET_KEY=your-secret-key
 ```
 
-### 워커노드 (.env)
+### 워커노드 환경변수
+
 ```env
-NODE_ID=worker-node-1
-VPN_IP=10.100.1.1
-HOST_IP=10.100.1.1
-CENTRAL_SERVER_IP=10.100.0.1
+NODE_ID=worker-01
+DESCRIPTION=GPU Server #1
+CENTRAL_SERVER_IP=10.100.0.2
+HOST_IP=10.100.1.2  # VPN Manager에서 할당받은 IP
 ```
 
 ## 🚨 주의사항
 
-1. **방화벽 설정**
-   - VPN Manager: UDP 51820, TCP 8090 개방
-   - 다른 서버: UDP 51820 아웃바운드만 허용
+### Windows 방화벽 설정
 
-2. **DNS 설정**
-   - 컨테이너 내부에서 VPN IP 사용
-   - 외부에서는 공인 IP 사용
+설치 스크립트가 자동으로 추가하는 규칙:
+- WireGuard UDP 51820
+- VPN 서브넷 (10.100.0.0/16)
+- ICMP (ping)
+- 필요한 서비스 포트
 
-3. **네트워크 모드**
-   - `network_mode: "service:wireguard-client"` 필수
-   - 모든 서비스가 VPN 네트워크 사용
+### IP 할당 정책
 
-4. **재시작 정책**
-   - WireGuard 컨테이너는 항상 먼저 시작
-   - `depends_on` 설정 확인
+- **중앙서버**: 10.100.0.2 ~ 10.100.0.6 (최대 5개)
+- **워커노드**: 10.100.1.2 ~ 10.100.1.11 (최대 10개)
+
+### Docker 네트워크
+
+중앙서버 VPN 전용 모드:
+```yaml
+ports:
+  - "${VPN_IP}:8000:8000"  # VPN IP에만 바인딩
+```
 
 ## 🔧 문제 해결
 
 ### VPN 연결 실패
-```bash
-# WireGuard 로그 확인
-docker logs worker-wireguard
 
-# 인터페이스 상태 확인
-docker exec worker-wireguard wg show
+```bash
+# WireGuard 상태 확인
+sudo wg show
+
+# 로그 확인
+sudo journalctl -u wg-quick@wg0
 ```
 
-### API 통신 실패
-```bash
-# 라우팅 테이블 확인
-docker exec worker-node-api ip route
+### Windows에서 설치 실패
 
-# DNS 확인
-docker exec worker-node-api nslookup central-server
-```
+1. 관리자 권한으로 실행 확인
+2. Windows Defender 임시 비활성화
+3. 수동으로 WireGuard 설치: https://www.wireguard.com/install/
 
 ### 노드 재등록
-```bash
-# VPN Manager API로 기존 노드 삭제
-curl -X DELETE -H "Authorization: Bearer $API_TOKEN" \
-  http://vpn-server:8090/nodes/worker-node-1
 
-# 다시 setup-vpn.sh 실행
-./setup-vpn.sh
+```bash
+# 기존 노드 삭제
+curl -X DELETE -H "X-API-Key: test-token-123" \
+  http://<VPN_SERVER_IP>:8090/api/nodes/<node-id>
+
+# 새로 등록
+http://<VPN_SERVER_IP>:8090/central/setup  # 또는 /worker/setup
 ```
+
+## 📚 추가 문서
+
+- [QUICK_START.md](./QUICK_START.md) - 빠른 시작 가이드
+- [WORKER_NODE_DEPLOYMENT.md](./WORKER_NODE_DEPLOYMENT.md) - 워커노드 배포 가이드
+- [README.md](./README.md) - 프로젝트 개요
+
+## 🆘 지원
+
+문제가 발생하면:
+1. VPN Manager 대시보드에서 노드 상태 확인
+2. 로그 확인: `docker-compose logs -f`
+3. GitHub Issues에 문의

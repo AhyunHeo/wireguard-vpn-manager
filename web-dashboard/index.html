@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Manager Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: white;
+            text-align: center;
+            font-size: 36px;
+            margin-bottom: 40px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        }
+        
+        .card-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        .card-title {
+            font-size: 22px;
+            color: #333;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .card-description {
+            color: #666;
+            line-height: 1.6;
+        }
+        
+        .card.primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .card.primary .card-title,
+        .card.primary .card-description {
+            color: white;
+        }
+        
+        .status-section {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .status-title {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .status-item {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .status-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .status-label {
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 WireGuard VPN Manager</h1>
+        
+        <div class="cards-grid">
+            <a href="/api/qr-generator" class="card">
+                <div class="card-icon">📱</div>
+                <div class="card-title">QR 코드 생성</div>
+                <div class="card-description">
+                    모바일 기기용 VPN 프로필 QR 코드를 생성합니다
+                </div>
+            </a>
+            
+            <a href="/web-dashboard/worker-integration.html" class="card primary">
+                <div class="card-icon">🔗</div>
+                <div class="card-title">워커노드 통합 등록</div>
+                <div class="card-description">
+                    VPN과 워커노드 플랫폼을 통합하여 한 번에 등록합니다
+                </div>
+            </a>
+            
+            <a href="/web-dashboard/worker-platform-test.html" class="card">
+                <div class="card-icon">🧪</div>
+                <div class="card-title">플랫폼 통합 테스트</div>
+                <div class="card-description">
+                    워커노드 서버 실행 후 통합 테스트를 수행합니다
+                </div>
+            </a>
+            
+            <a href="/api/web-installer" class="card">
+                <div class="card-icon">💻</div>
+                <div class="card-title">웹 설치 마법사</div>
+                <div class="card-description">
+                    브라우저에서 직접 VPN 클라이언트를 설치합니다
+                </div>
+            </a>
+            
+            <a href="/api/vpn-status" class="card">
+                <div class="card-icon">📊</div>
+                <div class="card-title">VPN 상태 모니터링</div>
+                <div class="card-description">
+                    연결된 클라이언트와 트래픽 현황을 확인합니다
+                </div>
+            </a>
+            
+            <a href="#" onclick="showNodeList()" class="card">
+                <div class="card-icon">🖥️</div>
+                <div class="card-title">노드 관리</div>
+                <div class="card-description">
+                    등록된 워커노드를 관리하고 상태를 확인합니다
+                </div>
+            </a>
+            
+            <a href="/api/test-installer" class="card">
+                <div class="card-icon">🧪</div>
+                <div class="card-title">연결 테스트</div>
+                <div class="card-description">
+                    VPN 연결 상태를 테스트하고 진단합니다
+                </div>
+            </a>
+        </div>
+        
+        <div class="status-section">
+            <h2 class="status-title">📈 시스템 현황</h2>
+            <div class="status-grid" id="statusGrid">
+                <div class="status-item">
+                    <div class="status-value" id="totalNodes">-</div>
+                    <div class="status-label">전체 노드</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="connectedNodes">-</div>
+                    <div class="status-label">연결된 노드</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="workerNodes">-</div>
+                    <div class="status-label">워커 노드</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="centralNodes">-</div>
+                    <div class="status-label">중앙 서버</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 페이지 로드 시 상태 정보 가져오기
+        async function loadStatus() {
+            try {
+                const response = await fetch('/api/nodes/list');
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('totalNodes').textContent = data.total;
+                    
+                    const connected = data.nodes.filter(n => n.status === 'connected').length;
+                    document.getElementById('connectedNodes').textContent = connected;
+                    
+                    const workers = data.nodes.filter(n => n.node_type === 'worker').length;
+                    document.getElementById('workerNodes').textContent = workers;
+                    
+                    const central = data.nodes.filter(n => n.node_type === 'central').length;
+                    document.getElementById('centralNodes').textContent = central;
+                }
+            } catch (error) {
+                console.error('Failed to load status:', error);
+            }
+        }
+        
+        function showNodeList() {
+            window.location.href = '/api/nodes/list';
+        }
+        
+        // 페이지 로드 시 상태 정보 로드
+        window.addEventListener('DOMContentLoaded', loadStatus);
+        
+        // 30초마다 상태 업데이트
+        setInterval(loadStatus, 30000);
+    </script>
+</body>
+</html>

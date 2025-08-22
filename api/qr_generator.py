@@ -149,7 +149,10 @@ async def vpn_qr_page(request: Request):
             
             <div>
                 <input type="text" id="nodeId" placeholder="노드 ID (예: worker-gpu-1)" />
-                <input type="text" id="nodeType" placeholder="노드 타입 (worker/central)" value="worker" />
+                <select id="nodeType" style="width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 16px;">
+                    <option value="worker" selected>워커 노드 (Worker Node)</option>
+                    <option value="central">중앙 서버 (Central Server)</option>
+                </select>
                 <button class="button" onclick="generateQR()">QR 코드 생성</button>
             </div>
             
@@ -163,8 +166,9 @@ async def vpn_qr_page(request: Request):
             <div class="instructions">
                 <h3>📖 사용 방법</h3>
                 <ol>
-                    <li>노드 ID를 입력하고 QR 코드 생성</li>
-                    <li>워커 노드에서:</li>
+                    <li>노드 ID 입력 및 노드 타입 선택</li>
+                    <li>QR 코드 생성 버튼 클릭</li>
+                    <li>대상 장치에서:</li>
                     <ul>
                         <li>모바일: QR 코드 스캔</li>
                         <li>PC: URL 복사 후 브라우저에서 접속</li>
@@ -175,8 +179,13 @@ async def vpn_qr_page(request: Request):
             </div>
             
             <div class="info-box">
-                <strong>💡 팁:</strong> QR 코드는 15분간 유효합니다.<br>
-                여러 노드를 등록하려면 각각 새로운 QR 코드를 생성하세요.
+                <strong>💡 팁:</strong> 
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>QR 코드는 15분간 유효합니다</li>
+                    <li>워커 노드: 10.100.1.x 대역 IP 할당</li>
+                    <li>중앙 서버: 10.100.0.x 대역 IP 할당</li>
+                    <li>노드 ID는 중복되지 않도록 고유하게 설정하세요</li>
+                </ul>
             </div>
         </div>
         
@@ -258,22 +267,43 @@ async def vpn_qr_page(request: Request):
 @router.post("/api/generate-qr")
 async def generate_qr(request: Request, qr_request: QRGenerateRequest):
     """
-    QR 코드 생성 API
+    QR 코드 생성 API - 토큰을 DB에 저장
     """
+    from database import SessionLocal
+    from models import QRToken
+    
     # 고유 토큰 생성
     token = str(uuid.uuid4())[:12]
     
-    # 토큰 정보 저장 (15분 유효)
-    token_store[token] = {
-        "node_id": qr_request.node_id,
-        "node_type": qr_request.node_type,
-        "created_at": datetime.now(),
-        "expires_at": datetime.now() + timedelta(minutes=15)
-    }
+    # DB에 토큰 저장
+    db = SessionLocal()
+    try:
+        expires_at = datetime.now() + timedelta(minutes=15)
+        
+        # DB에 저장
+        db_token = QRToken(
+            token=token,
+            node_id=qr_request.node_id,
+            node_type=qr_request.node_type,
+            expires_at=expires_at,
+            used=False
+        )
+        db.add(db_token)
+        db.commit()
+        
+        # 메모리 캐시에도 저장 (이전 버전 호환성)
+        token_store[token] = {
+            "node_id": qr_request.node_id,
+            "node_type": qr_request.node_type,
+            "created_at": datetime.now(),
+            "expires_at": expires_at
+        }
+    finally:
+        db.close()
     
-    # 조인 URL 생성
+    # 조인 URL 생성 - qr-join 경로 사용
     base_url = str(request.url).split('/api')[0]
-    join_url = f"{base_url}/join/{token}"
+    join_url = f"{base_url}/qr-join/{token}"
     
     # QR 코드 생성
     qr = qrcode.QRCode(
@@ -299,10 +329,10 @@ async def generate_qr(request: Request, qr_request: QRGenerateRequest):
         "expires_at": token_store[token]["expires_at"].isoformat()
     }
 
-@router.get("/join/{token}", response_class=HTMLResponse)
-async def join_page(token: str, request: Request):
+@router.get("/qr-join/{token}", response_class=HTMLResponse)
+async def qr_join_page(token: str, request: Request):
     """
-    VPN 연결 페이지 (QR 스캔 또는 URL 클릭 후 자동 설치 페이지로 리다이렉트)
+    QR 코드 전용 연결 페이지 - web_installer의 /join/{token}과 충돌 방지
     """
     # 토큰 검증
     if token not in token_store:
@@ -314,20 +344,20 @@ async def join_page(token: str, request: Request):
         return HTMLResponse(content="<h1>만료된 토큰입니다</h1>", status_code=404)
     
     # 서버 URL 가져오기
-    server_url = str(request.url).split('/join')[0]
+    server_url = str(request.url).split('/qr-join')[0]
     
-    # 자동 설치 페이지로 즉시 리다이렉트
+    # 테스트 페이지로 리다이렉트 (디버깅용)
     html_content = f"""
     <!DOCTYPE html>
     <html lang="ko">
     <head>
         <meta charset="UTF-8">
-        <meta http-equiv="refresh" content="0; url={server_url}/auto-install/{token}">
+        <meta http-equiv="refresh" content="0; url={server_url}/test-join/{token}">
         <title>VPN 설치 페이지로 이동 중...</title>
     </head>
     <body>
-        <p>자동 설치 페이지로 이동 중입니다...</p>
-        <p>자동으로 이동되지 않으면 <a href="{server_url}/auto-install/{token}">여기를 클릭</a>하세요.</p>
+        <p>VPN 설치 페이지로 이동 중입니다...</p>
+        <p>자동으로 이동되지 않으면 <a href="{server_url}/test-join/{token}">여기를 클릭</a>하세요.</p>
     </body>
     </html>
     """

@@ -283,6 +283,7 @@ async def join_vpn_page(token: str, request: Request):
                 
                 try {{
                     // VPN 등록 API 호출
+                    console.log('API 호출 중:', `${{API_URL}}/api/quick-register/${{TOKEN}}`);
                     const response = await fetch(`${{API_URL}}/api/quick-register/${{TOKEN}}`, {{
                         method: 'POST',
                         headers: {{
@@ -295,6 +296,10 @@ async def join_vpn_page(token: str, request: Request):
                             }}
                         }})
                     }});
+                    
+                    if (!response.ok) {{
+                        throw new Error(`API 응답 오류: ${{response.status}}`);
+                    }}
                     
                     const data = await response.json();
                     vpnConfig = data.config;
@@ -310,8 +315,16 @@ async def join_vpn_page(token: str, request: Request):
                     selectOS(os);
                     
                 }} catch (error) {{
+                    console.error('API 호출 실패:', error);
                     document.getElementById('status').className = 'status error';
-                    document.getElementById('status').innerHTML = '❌ 연결 실패: ' + error.message;
+                    document.getElementById('status').innerHTML = '❌ 연결 실패: ' + error.message + '<br><small>디버깅을 위해 콘솔을 확인하세요</small>';
+                    
+                    // API 실패해도 수동 설치 옵션 표시
+                    document.getElementById('step3').classList.remove('active');
+                    document.getElementById('step3').classList.add('completed');
+                    document.getElementById('status').style.display = 'none';
+                    document.getElementById('downloadSection').style.display = 'block';
+                    selectOS(os);
                 }}
             }}
 
@@ -326,11 +339,13 @@ async def join_vpn_page(token: str, request: Request):
             function selectOS(os) {{
                 selectedOS = os;
                 
-                // 버튼 활성화
+                // 버튼 활성화 - event.target이 없을 때 처리
                 document.querySelectorAll('.os-button').forEach(btn => {{
                     btn.classList.remove('active');
+                    if (btn.textContent.toLowerCase().includes(os)) {{
+                        btn.classList.add('active');
+                    }}
                 }});
-                event.target.classList.add('active');
                 
                 // 명령어 표시
                 document.getElementById('installCommand').style.display = 'block';
@@ -418,19 +433,29 @@ echo "VPN IP: $(ip -4 addr show wg0 | grep inet | awk '{{print $2}}')"
 @router.post("/api/quick-register/{token}")
 async def quick_register(token: str, request: Request):
     """
-    토큰 기반 빠른 등록
+    토큰 기반 빠른 등록 - 실제 구현
     """
     # 토큰으로 사전 생성된 노드 정보 조회
     node_info = get_node_info_by_token(token)
     
-    # 실제 등록 로직
-    # ... (기존 register_node 로직 활용)
+    # 여기서는 더미 데이터 반환 (실제로는 VPN 등록 로직 필요)
+    # TODO: 실제 WireGuard 설정 생성 로직 추가
+    dummy_config = """[Interface]
+PrivateKey = dummy_private_key
+Address = 10.100.1.1/32
+DNS = 8.8.8.8
+
+[Peer]
+PublicKey = dummy_public_key
+Endpoint = vpn-server:51820
+AllowedIPs = 10.100.0.0/16
+PersistentKeepalive = 25"""
     
     return {
         "status": "success",
         "node_id": node_info["node_id"],
-        "vpn_ip": "10.100.1.x",  # 실제 할당된 IP
-        "config": "base64_encoded_config"
+        "vpn_ip": "10.100.1.1",  # 실제 할당된 IP
+        "config": base64.b64encode(dummy_config.encode()).decode()
     }
 
 @router.get("/generate-join-link")

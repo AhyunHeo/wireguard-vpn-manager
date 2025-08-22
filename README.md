@@ -40,6 +40,9 @@ New-NetFirewallRule -DisplayName "VPN Manager API" -Direction Inbound -Protocol 
 # WireGuard VPN 포트 (필수) - 개인 및 공용 네트워크 모두 허용
 New-NetFirewallRule -DisplayName "WireGuard VPN" -Direction Inbound -Protocol UDP -LocalPort 51820 -Action Allow -Profile Any
 
+# ICMP 규칙 추가 (필수) - ping 응답 허용
+New-NetFirewallRule -DisplayName "WireGuard ICMP In" -Direction Inbound -Protocol ICMPv4 -IcmpType 8 -Action Allow
+
 # WireGuard UI 포트 (선택사항) - 개인 및 공용 네트워크 모두 허용
 New-NetFirewallRule -DisplayName "WireGuard UI" -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow -Profile Any
 
@@ -141,17 +144,14 @@ wireguard-vpn-manager/
 ## 📊 모니터링
 
 ```bash
-# 실시간 상태 모니터링
-python3 monitoring/vpn-status.py \
-  --api-url http://localhost:8090 \
-  --api-token test-token-123 \
-  --watch
-
 # API로 노드 목록 조회
 curl -H "Authorization: Bearer test-token-123" http://localhost:8090/nodes
 
+# WireGuard 서버 상태 확인
+curl -H "Authorization: Bearer test-token-123" http://localhost:8090/status/wireguard
+
 # WireGuard UI 접속
-# 브라우저: http://localhost:5000 (admin/admin123)
+# 브라우저: http://localhost:5000
 ```
 
 ## ⚠️ 네트워크 요구사항

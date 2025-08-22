@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 from typing import List, Optional
@@ -11,6 +11,9 @@ import time
 import tempfile
 from pathlib import Path
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 from database import SessionLocal, engine, Base
 from models import Node, NodeCreate, NodeResponse, NodeStatus
@@ -101,24 +104,10 @@ async def register_node(
     if existing:
         raise HTTPException(status_code=400, detail="노드가 이미 등록되어 있습니다")
     
-    # VPN IP 할당
-    if node.node_type == "central":
-        vpn_ip = "10.100.0.1"
-    else:
-        # 워커노드용 IP 할당
-        import ipaddress
-        last_worker = db.query(Node).filter(
-            Node.node_type == "worker"
-        ).order_by(Node.vpn_ip.desc()).first()
-        
-        if last_worker:
-            last_ip = ipaddress.ip_address(last_worker.vpn_ip)
-            next_ip = last_ip + 1
-            if next_ip > ipaddress.ip_address("10.100.1.253"):
-                raise HTTPException(status_code=400, detail="워커노드 IP 풀이 가득 찼습니다")
-            vpn_ip = str(next_ip)
-        else:
-            vpn_ip = "10.100.1.1"
+    # VPN IP 할당 (통합된 allocate_ip 메서드 사용)
+    vpn_ip = wg_manager.allocate_ip(node.node_type)
+    if not vpn_ip:
+        raise HTTPException(status_code=500, detail="VPN IP 할당 실패")
     
     # WireGuard 키 생성
     keys = wg_manager.generate_keypair()
@@ -254,6 +243,235 @@ async def get_node(
         updated_at=node.updated_at
     )
 
+@app.post("/api/nodes/{node_id}/sync")
+async def sync_node_to_server(
+    node_id: str,
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_token)
+):
+    """특정 노드를 WireGuard 서버에 동기화"""
+    
+    node = db.query(Node).filter(Node.node_id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="노드를 찾을 수 없습니다")
+    
+    try:
+        # WireGuard 서버에 피어 추가
+        wg_manager.add_peer_to_server(
+            public_key=node.public_key,
+            vpn_ip=node.vpn_ip,
+            node_id=node.node_id
+        )
+        
+        # 상태 업데이트
+        node.status = "synced"
+        node.updated_at = datetime.utcnow()
+        db.commit()
+        
+        return {
+            "message": f"노드 {node_id}가 서버에 동기화되었습니다",
+            "vpn_ip": node.vpn_ip,
+            "status": "synced"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"동기화 실패: {str(e)}")
+
+@app.post("/api/nodes/sync-all")
+async def sync_all_nodes_to_server(
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_token)
+):
+    """모든 노드를 WireGuard 서버에 동기화"""
+    
+    nodes = db.query(Node).all()
+    synced_count = 0
+    failed_nodes = []
+    
+    for node in nodes:
+        try:
+            # WireGuard 서버에 피어 추가
+            wg_manager.add_peer_to_server(
+                public_key=node.public_key,
+                vpn_ip=node.vpn_ip,
+                node_id=node.node_id
+            )
+            
+            # 상태 업데이트
+            node.status = "synced"
+            node.updated_at = datetime.utcnow()
+            synced_count += 1
+            
+        except Exception as e:
+            failed_nodes.append({
+                "node_id": node.node_id,
+                "vpn_ip": node.vpn_ip,
+                "error": str(e)
+            })
+            logger.error(f"노드 {node.node_id} 동기화 실패: {e}")
+    
+    db.commit()
+    
+    return {
+        "message": f"동기화 완료: {synced_count}개 성공",
+        "synced": synced_count,
+        "failed": len(failed_nodes),
+        "failed_nodes": failed_nodes
+    }
+
+@app.post("/api/nodes/refresh-configs")
+async def refresh_all_node_configs(
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_token)
+):
+    """모든 노드의 설정 파일을 재생성 (올바른 서버 IP로 업데이트)"""
+    
+    nodes = db.query(Node).all()
+    updated_count = 0
+    failed_nodes = []
+    
+    for node in nodes:
+        try:
+            # 새 설정 파일 생성 (올바른 endpoint로)
+            new_config = wg_manager.generate_client_config(
+                private_key=node.private_key,
+                client_ip=node.vpn_ip,
+                server_public_key=wg_manager.get_server_public_key()
+            )
+            
+            # DB 업데이트
+            node.config = new_config
+            node.updated_at = datetime.utcnow()
+            updated_count += 1
+            
+        except Exception as e:
+            failed_nodes.append({
+                "node_id": node.node_id,
+                "vpn_ip": node.vpn_ip,
+                "error": str(e)
+            })
+            logger.error(f"노드 {node.node_id} 설정 업데이트 실패: {e}")
+    
+    db.commit()
+    
+    return {
+        "message": f"설정 업데이트 완료: {updated_count}개 성공",
+        "updated": updated_count,
+        "failed": len(failed_nodes),
+        "failed_nodes": failed_nodes
+    }
+
+@app.post("/api/nodes/test-single")
+async def test_single_node_connectivity(
+    request: dict,
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_token)
+):
+    """Test connectivity to a single node from server"""
+    vpn_ip = request.get('vpn_ip')
+    node_id = request.get('node_id')
+    
+    if not vpn_ip:
+        raise HTTPException(status_code=400, detail="VPN IP required")
+    
+    try:
+        import subprocess
+        
+        # First, try to ping from WireGuard container
+        wg_result = subprocess.run(
+            ["docker", "exec", "wireguard-server", "ping", "-c", "1", "-W", "2", vpn_ip],
+            capture_output=True,
+            text=True
+        )
+        
+        # If WireGuard container can't reach, try from API container
+        if wg_result.returncode != 0:
+            api_result = subprocess.run(
+                ["ping", "-c", "1", "-W", "2", vpn_ip],
+                capture_output=True,
+                text=True
+            )
+            reachable = api_result.returncode == 0
+            details = api_result.stdout if reachable else api_result.stderr
+        else:
+            reachable = True
+            details = wg_result.stdout
+        
+        # Update node status if we have node_id
+        if node_id and reachable:
+            node = db.query(Node).filter(Node.node_id == node_id).first()
+            if node:
+                node.status = "connected"
+                node.updated_at = datetime.utcnow()
+                db.commit()
+        
+        return {
+            "reachable": reachable,
+            "vpn_ip": vpn_ip,
+            "message": "Connected" if reachable else "Unreachable",
+            "details": details
+        }
+        
+    except Exception as e:
+        logger.error(f"Test failed: {e}")
+        return {
+            "reachable": False,
+            "vpn_ip": vpn_ip,
+            "message": f"Test failed: {str(e)}"
+        }
+
+@app.get("/api/nodes/{node_id}/download-config")
+async def download_node_config(
+    node_id: str,
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_token)
+):
+    """특정 노드의 WireGuard 설정 파일 다운로드"""
+    
+    node = db.query(Node).filter(Node.node_id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="노드를 찾을 수 없습니다")
+    
+    # 설정이 없거나 "auto"가 포함된 경우 재생성
+    if not node.config or "auto:51820" in node.config:
+        node.config = wg_manager.generate_client_config(
+            private_key=node.private_key,
+            client_ip=node.vpn_ip,
+            server_public_key=wg_manager.get_server_public_key()
+        )
+        node.updated_at = datetime.utcnow()
+        db.commit()
+    
+    return Response(
+        content=node.config,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f"attachment; filename={node_id}.conf"
+        }
+    )
+
+@app.put("/nodes/{node_id}")
+async def update_node_status(
+    node_id: str,
+    status_update: dict,
+    db: Session = Depends(get_db),
+    token: str = Depends(verify_token)
+):
+    """노드 상태 업데이트"""
+    
+    node = db.query(Node).filter(Node.node_id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="노드를 찾을 수 없습니다")
+    
+    # Update status if provided
+    if 'status' in status_update:
+        node.status = status_update['status']
+        node.updated_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(node)
+    
+    return {"message": "Node status updated", "status": node.status}
+
 @app.get("/nodes/{node_id}/config")
 async def get_node_config(
     node_id: str,
@@ -346,8 +564,49 @@ async def generate_config_for_token(
     db: Session = Depends(get_db)
 ):
     """토큰 기반 VPN 설정 생성"""
-    # 간단한 구현 - 실제로는 토큰 검증 필요
-    node_id = f"auto-node-{token[:8]}"
+    from qr_generator import token_store
+    from models import QRToken
+    
+    logger.info(f"generate-config called with token: {token}")
+    
+    # 먼저 DB에서 토큰 조회
+    db_token = db.query(QRToken).filter(QRToken.token == token).first()
+    
+    if db_token:
+        logger.info(f"Token found in DB: node_id={db_token.node_id}, type={db_token.node_type}")
+        
+        # 만료 확인
+        if datetime.now() > db_token.expires_at:
+            raise HTTPException(status_code=400, detail="만료된 토큰입니다")
+        
+        # 이미 사용된 토큰인지 확인
+        if db_token.used:
+            logger.warning(f"Token {token} already used")
+        
+        node_id = db_token.node_id
+        node_type = db_token.node_type
+        
+        # 토큰을 사용됨으로 표시
+        db_token.used = True
+        db.commit()
+        
+    # DB에 없으면 메모리 캐시 확인 (fallback)
+    elif token in token_store:
+        token_info = token_store[token]
+        logger.info(f"Token found in memory store: {token_info}")
+        
+        if datetime.now() > token_info["expires_at"]:
+            del token_store[token]
+            raise HTTPException(status_code=400, detail="만료된 토큰입니다")
+        
+        node_id = token_info["node_id"]
+        node_type = token_info.get("node_type", "worker")
+        
+    else:
+        # 토큰이 없으면 자동 생성 (이전 버전 호환성)
+        logger.warning(f"Token {token} not found, using auto-generation")
+        node_id = f"auto-node-{token[:8]}"
+        node_type = "worker"
     
     # 기존 노드 확인
     existing_node = db.query(Node).filter(Node.node_id == node_id).first()
@@ -361,8 +620,8 @@ async def generate_config_for_token(
     # 새 노드 생성
     node_data = NodeCreate(
         node_id=node_id,
-        node_type="worker",
-        hostname=f"auto-{token[:8]}",
+        node_type=node_type,
+        hostname=node_id,  # node_id를 hostname으로 사용
         public_ip="0.0.0.0"  # 자동 감지
     )
     
@@ -384,8 +643,8 @@ async def generate_config_for_token(
     # DB 저장
     db_node = Node(
         node_id=node_id,
-        node_type="worker",
-        hostname=f"auto-{token[:8]}",
+        node_type=node_type,
+        hostname=node_id,
         public_ip="0.0.0.0",
         vpn_ip=vpn_ip,
         public_key=keys['public_key'],
@@ -474,11 +733,61 @@ echo "이제 설정 파일을 다운로드하세요."
 # 웹 기반 설치 라우터 추가
 from web_installer import router as web_installer_router
 from qr_generator import router as qr_generator_router
-from auto_installer import router as auto_installer_router
+from test_installer import router as test_installer_router
+from auto_vpn_installer import router as auto_vpn_installer_router
+from vpn_status import router as vpn_status_router
+from vpn_uninstaller import router as vpn_uninstaller_router
+from node_manager import router as node_manager_router
+from worker_integration import router as worker_integration_router
+from central_integration import router as central_integration_router
 
 app.include_router(web_installer_router, tags=["Web Installer"])
 app.include_router(qr_generator_router, tags=["QR Generator"])
-app.include_router(auto_installer_router, tags=["Auto Installer"])
+app.include_router(test_installer_router, tags=["Test Installer"])
+app.include_router(auto_vpn_installer_router, tags=["Auto VPN Installer"])
+app.include_router(vpn_status_router, tags=["VPN Status"])
+app.include_router(vpn_uninstaller_router, tags=["VPN Uninstaller"])
+app.include_router(node_manager_router, tags=["Node Manager"])
+app.include_router(worker_integration_router, tags=["Worker Integration"])
+app.include_router(central_integration_router, tags=["Central Integration"])
+
+# Worker node config file endpoint
+@app.get("/api/worker-config/{node_id}")
+async def get_worker_config_file(node_id: str, db: Session = Depends(get_db)):
+    """워커노드 WireGuard 설정 파일 직접 다운로드"""
+    from models import Node
+    
+    # 노드 정보 조회
+    node = db.query(Node).filter(Node.node_id == node_id).first()
+    
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    
+    if not node.config:
+        raise HTTPException(status_code=400, detail="Node configuration not ready")
+    
+    # 설정 파일을 직접 반환
+    return Response(
+        content=node.config,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f"attachment; filename={node_id}.conf"
+        }
+    )
+
+# 웹 대시보드 정적 파일 서빙
+from fastapi.staticfiles import StaticFiles
+import os
+
+web_dashboard_path = "/app/web-dashboard"
+if os.path.exists(web_dashboard_path):
+    app.mount("/web-dashboard", StaticFiles(directory=web_dashboard_path), name="web-dashboard")
+
+@app.get("/")
+async def root():
+    """루트 경로를 대시보드로 리다이렉트"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/web-dashboard/index.html")
 
 if __name__ == "__main__":
     import uvicorn

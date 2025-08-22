@@ -25,7 +25,6 @@ vpn_db_data/
 
 # Environment
 .env
-.env.local
 .env.production
 
 # Docker
