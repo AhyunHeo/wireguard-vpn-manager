@@ -114,8 +114,8 @@ try {{
 Write-Host "🔥 Windows 방화벽 설정 중..." -ForegroundColor Cyan
 try {{
     # WireGuard를 위한 방화벽 규칙 추가
-    New-NetFirewallRule -DisplayName "WireGuard VPN" -Direction Inbound -Protocol UDP -LocalPort 51820 -Action Allow -ErrorAction SilentlyContinue
-    New-NetFirewallRule -DisplayName "WireGuard VPN" -Direction Outbound -Protocol UDP -LocalPort 51820 -Action Allow -ErrorAction SilentlyContinue
+    New-NetFirewallRule -DisplayName "WireGuard VPN" -Direction Inbound -Protocol UDP -LocalPort 41820 -Action Allow -ErrorAction SilentlyContinue
+    New-NetFirewallRule -DisplayName "WireGuard VPN" -Direction Outbound -Protocol UDP -LocalPort 41820 -Action Allow -ErrorAction SilentlyContinue
     
     # WireGuard 애플리케이션 허용
     $wireguardExe = "C:\\Program Files\\WireGuard\\wireguard.exe"
@@ -161,12 +161,15 @@ if (Test-Path $wireguardPath) {{
     Copy-Item -Path $configPath -Destination $wireguardConfigDir -Force
     Write-Host "✅ 설정 파일 복사 완료" -ForegroundColor Green
     
-    # WireGuard UI 실행 (자동으로 설정 파일 감지)
+    # WireGuard UI 실행 및 터널 자동 import/활성화
     Start-Process -FilePath $wireguardPath
     Start-Sleep -Seconds 3
     
-    Write-Host "✅ WireGuard가 실행되었습니다" -ForegroundColor Green
-    Write-Host "📌 WireGuard 창에서 터널을 활성화하세요" -ForegroundColor Yellow
+    # 설정 파일 자동 import 및 서비스로 설치
+    Write-Host "VPN 터널 자동 설정 중..." -ForegroundColor Yellow
+    & $wireguardPath /installtunnelservice $configPath
+    
+    Write-Host "✅ WireGuard 터널이 자동으로 활성화되었습니다" -ForegroundColor Green
     
     Write-Host "" 
     Write-Host "========================================" -ForegroundColor Cyan

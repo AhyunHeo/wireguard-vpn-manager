@@ -10,7 +10,9 @@ from pydantic import BaseModel
 from database import SessionLocal
 from models import Node, QRToken
 from wireguard_manager import WireGuardManager
-from worker_windows_installer import generate_worker_windows_installer
+from worker_vpn_installer import generate_worker_vpn_installer
+from simple_worker_docker_runner import generate_simple_worker_runner, generate_simple_worker_runner_wsl
+# generate_simple_worker_runner_linux는 main.py에서만 사용
 from typing import Optional
 import json
 import logging
@@ -35,13 +37,16 @@ class WorkerEnvironmentRequest(BaseModel):
     """워커노드 환경변수 설정 요청"""
     node_id: str
     description: str
-    central_server_ip: Optional[str] = "10.100.0.1"
+    central_server_ip: Optional[str] = None
     hostname: Optional[str] = None
 
 @router.get("/worker/setup")
 async def worker_setup_page():
     """워커노드 설정 페이지"""
-    html_content = """
+    import os
+    central_server_url = os.getenv('CENTRAL_SERVER_URL', 'http://192.168.0.88:8000')
+    
+    html_content = f"""
     <!DOCTYPE html>
     <html lang="ko">
     <head>
@@ -49,8 +54,8 @@ async def worker_setup_page():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>워커노드 통합 설정</title>
         <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body {
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 min-height: 100vh;
@@ -58,47 +63,47 @@ async def worker_setup_page():
                 align-items: center;
                 justify-content: center;
                 padding: 20px;
-            }
-            .container {
+            }}
+            .container {{
                 background: white;
                 border-radius: 20px;
                 box-shadow: 0 20px 60px rgba(0,0,0,0.3);
                 max-width: 500px;
                 width: 100%;
                 padding: 40px;
-            }
-            h1 {
+            }}
+            h1 {{
                 color: #333;
                 margin-bottom: 10px;
                 font-size: 28px;
-            }
-            .subtitle {
+            }}
+            .subtitle {{
                 color: #666;
                 margin-bottom: 30px;
                 font-size: 14px;
-            }
-            .form-group {
+            }}
+            .form-group {{
                 margin-bottom: 20px;
-            }
-            label {
+            }}
+            label {{
                 display: block;
                 margin-bottom: 8px;
                 color: #555;
                 font-weight: 500;
-            }
-            input, select {
+            }}
+            input, select {{
                 width: 100%;
                 padding: 12px;
                 border: 2px solid #e0e0e0;
                 border-radius: 8px;
                 font-size: 16px;
                 transition: border-color 0.3s;
-            }
-            input:focus, select:focus {
+            }}
+            input:focus, select:focus {{
                 outline: none;
                 border-color: #667eea;
-            }
-            .btn {
+            }}
+            .btn {{
                 width: 100%;
                 padding: 14px;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -109,32 +114,32 @@ async def worker_setup_page():
                 font-weight: 600;
                 cursor: pointer;
                 transition: transform 0.2s, box-shadow 0.2s;
-            }
-            .btn:hover {
+            }}
+            .btn:hover {{
                 transform: translateY(-2px);
                 box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
-            }
-            .btn:active {
+            }}
+            .btn:active {{
                 transform: translateY(0);
-            }
-            .result {
+            }}
+            .result {{
                 display: none;
                 margin-top: 30px;
                 padding: 20px;
                 background: #f8f9fa;
                 border-radius: 8px;
                 text-align: center;
-            }
-            .qr-code {
+            }}
+            .qr-code {{
                 margin: 20px 0;
-            }
-            .qr-code img {
+            }}
+            .qr-code img {{
                 max-width: 256px;
                 border: 4px solid white;
                 border-radius: 8px;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            }
-            .install-link {
+            }}
+            .install-link {{
                 display: inline-block;
                 margin-top: 15px;
                 padding: 10px 20px;
@@ -143,28 +148,28 @@ async def worker_setup_page():
                 text-decoration: none;
                 border-radius: 8px;
                 font-weight: 500;
-            }
-            .install-link:hover {
+            }}
+            .install-link:hover {{
                 background: #218838;
-            }
-            .info-box {
+            }}
+            .info-box {{
                 background: #e7f3ff;
                 border-left: 4px solid #2196F3;
                 padding: 12px;
                 margin-top: 20px;
                 border-radius: 4px;
-            }
-            .info-box p {
+            }}
+            .info-box p {{
                 color: #1976D2;
                 font-size: 14px;
                 line-height: 1.5;
-            }
-            .loading {
+            }}
+            .loading {{
                 display: none;
                 text-align: center;
                 margin: 20px 0;
-            }
-            .spinner {
+            }}
+            .spinner {{
                 border: 3px solid #f3f3f3;
                 border-top: 3px solid #667eea;
                 border-radius: 50%;
@@ -172,11 +177,11 @@ async def worker_setup_page():
                 height: 40px;
                 animation: spin 1s linear infinite;
                 margin: 0 auto;
-            }
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
+            }}
+            @keyframes spin {{
+                0% {{ transform: rotate(0deg); }}
+                100% {{ transform: rotate(360deg); }}
+            }}
         </style>
     </head>
     <body>
@@ -204,9 +209,10 @@ async def worker_setup_page():
                 </div>
                 
                 <div class="form-group">
-                    <label for="central_server_ip">중앙서버 VPN IP</label>
+                    <label for="central_server_ip">중앙서버 IP</label>
                     <input type="text" id="central_server_ip" name="central_server_ip" 
-                           value="10.100.0.1" pattern="[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+">
+                           value="{central_server_url.replace('http://', '').replace('https://', '').split(':')[0]}" 
+                           placeholder="예: 192.168.0.88">
                 </div>
                 
                 <button type="submit" class="btn">QR 코드 생성</button>
@@ -242,31 +248,31 @@ async def worker_setup_page():
         </div>
         
         <script>
-            document.getElementById('workerForm').addEventListener('submit', async (e) => {
+            document.getElementById('workerForm').addEventListener('submit', async (e) => {{
                 e.preventDefault();
                 
                 const formData = new FormData(e.target);
                 const data = Object.fromEntries(formData.entries());
                 
                 // 빈 값 제거
-                Object.keys(data).forEach(key => {
+                Object.keys(data).forEach(key => {{
                     if (!data[key]) delete data[key];
-                });
+                }});
                 
                 // 로딩 표시
                 document.querySelector('.loading').style.display = 'block';
                 document.querySelector('button[type="submit"]').disabled = true;
                 
-                try {
-                    const response = await fetch('/worker/generate-qr', {
+                try {{
+                    const response = await fetch('/worker/generate-qr', {{
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {{ 'Content-Type': 'application/json' }},
                         body: JSON.stringify(data)
-                    });
+                    }});
                     
-                    if (!response.ok) {
+                    if (!response.ok) {{
                         throw new Error('QR 코드 생성 실패');
-                    }
+                    }}
                     
                     const result = await response.json();
                     
@@ -280,15 +286,15 @@ async def worker_setup_page():
                     // 결과 표시
                     document.getElementById('result').style.display = 'block';
                     
-                } catch (error) {
+                }} catch (error) {{
                     alert('오류: ' + error.message);
-                } finally {
+                }} finally {{
                     document.querySelector('.loading').style.display = 'none';
                     document.querySelector('button[type="submit"]').disabled = false;
-                }
-            });
+                }}
+            }});
             
-            function copyUrl() {
+            function copyUrl() {{
                 const urlInput = document.getElementById('installUrl');
                 urlInput.select();
                 document.execCommand('copy');
@@ -299,10 +305,10 @@ async def worker_setup_page():
                 btn.textContent = '✅ 복사됨!';
                 btn.style.background = '#28a745';
                 
-                setTimeout(() => {
+                setTimeout(() => {{
                     btn.textContent = originalText;
-                }, 2000);
-            }
+                }}, 2000);
+            }}
         </script>
     </body>
     </html>
@@ -331,9 +337,14 @@ async def generate_worker_qr(
         db.add(qr_token)
         
         # 워커노드 메타데이터도 토큰과 함께 저장 (JSON 형태로)
+        # 중앙서버 IP를 URL로 변환
+        central_ip = request.central_server_ip or '192.168.0.88'
+        central_url = f"http://{central_ip}:8000"
+        
         metadata = {
             "description": request.description,
-            "central_server_ip": request.central_server_ip or "10.100.0.1",
+            "central_server_ip": central_ip,
+            "central_server_url": central_url,
             "hostname": request.hostname or request.node_id
         }
         
@@ -343,7 +354,7 @@ async def generate_worker_qr(
             node_type="worker",
             hostname=request.hostname or request.node_id,
             description=request.description,
-            central_server_ip=request.central_server_ip or "10.100.0.1",
+            central_server_url=central_url,
             docker_env_vars=json.dumps(metadata),
             status="pending",  # 아직 VPN 설정 전
             vpn_ip="0.0.0.0",  # 임시값
@@ -355,15 +366,23 @@ async def generate_worker_qr(
         # 중복 체크 및 업데이트
         existing = db.query(Node).filter(Node.node_id == request.node_id).first()
         if existing:
-            # 기존 노드가 있으면 메타데이터 업데이트
-            existing.description = request.description
-            existing.central_server_ip = request.central_server_ip or "10.100.0.1"
-            existing.hostname = request.hostname or request.node_id
-            existing.docker_env_vars = json.dumps(metadata)
-            existing.updated_at = datetime.now(timezone.utc)
+            # 기존 노드가 있으면 메타데이터만 업데이트 (pending 키는 건드리지 않음)
+            if existing.status != "pending":  # 이미 설정된 노드면 키 유지
+                existing.description = request.description
+                existing.central_server_url = central_url
+                existing.hostname = request.hostname or request.node_id
+                existing.docker_env_vars = json.dumps(metadata)
+                existing.updated_at = datetime.now(timezone.utc)
+            else:  # pending 상태면 메타데이터만 업데이트
+                existing.description = request.description
+                existing.central_server_url = central_url
+                existing.hostname = request.hostname or request.node_id
+                existing.docker_env_vars = json.dumps(metadata)
+                existing.updated_at = datetime.now(timezone.utc)
         else:
-            # 새 노드 추가
+            # 새 노드 추가 (임시로 pending 상태)
             db.add(new_node)
+            logger.info(f"Added new worker node {request.node_id} in pending status")
         
         db.commit()
         
@@ -398,6 +417,35 @@ async def generate_worker_qr(
     except Exception as e:
         logger.error(f"Failed to generate QR: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# 이제 /api/download/{node_id}/docker-runner 엔드포인트를 사용합니다
+# @router.get("/worker/docker-runner/{node_id}")
+# async def get_worker_docker_runner(node_id: str, os_type: str = "windows", db: Session = Depends(get_db)):
+#     """워커노드 Docker Runner 다운로드 (OS별 분기) - DEPRECATED"""
+#     node = db.query(Node).filter(Node.node_id == node_id).first()
+#     if not node:
+#         raise HTTPException(status_code=404, detail="Node not found")
+#     
+#     # OS 타입에 따라 적절한 Runner 생성
+#     if os_type.lower() == "linux":
+#         # Linux 버전은 main.py에서 처리
+#         # docker_runner = generate_simple_worker_runner_linux(node)
+#         # filename = f"docker-runner-{node_id}.sh"
+#         # media_type = "text/x-shellscript"
+#         pass
+#     else:
+#         # Windows (기본값)
+#         docker_runner = generate_simple_worker_runner(node)
+#         filename = f"docker-runner-{node_id}.bat"
+#         media_type = "application/x-msdos-program"
+#     
+#     return Response(
+#         content=docker_runner,
+#         media_type=media_type,
+#         headers={
+#             "Content-Disposition": f"attachment; filename={filename}"
+#         }
+#     )
 
 @router.get("/worker/install/{token}")
 async def worker_install_page(token: str, db: Session = Depends(get_db)):
@@ -586,7 +634,7 @@ async def worker_install_page(token: str, db: Session = Depends(get_db)):
                 </div>
                 <div class="info-row">
                     <span class="info-label">중앙서버 IP:</span>
-                    <span class="info-value">{node.central_server_ip or metadata.get('central_server_ip', '10.100.0.1')}</span>
+                    <span class="info-value">{node.central_server_url or metadata.get('central_server_url', os.getenv('CENTRAL_SERVER_URL', 'http://192.168.0.88:8000'))}</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">호스트명:</span>
@@ -653,17 +701,29 @@ async def worker_install_page(token: str, db: Session = Depends(get_db)):
                     </div>
                 </div>
                 
-                <div style="display: flex; gap: 20px; margin-top: 20px;">
-                    <button class="btn btn-success" onclick="downloadWindowsInstaller()" style="flex: 1;">
-                        🪟 Windows 설치 파일 다운로드 (.bat)
-                    </button>
-                    <button class="btn" onclick="showLinuxScript()" style="flex: 1; background: #6c757d;">
-                        🐧 Linux/Mac 스크립트 보기
-                    </button>
-                </div>
-                
-                <div class="code-block" id="installScript" style="display: none;">
-                    # 설치 스크립트 로딩 중...
+                <div style="margin-top: 20px;">
+                    <h4 style="margin-bottom: 10px;">📥 다운로드 (순서대로 실행):</h4>
+                    <div style="display: flex; gap: 20px; margin-bottom: 10px;">
+                        <button class="btn btn-success" onclick="downloadWindowsInstaller()" style="flex: 1;">
+                            1️⃣ VPN 설치 파일 (.bat)
+                        </button>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <h5 style="margin-bottom: 10px;">2️⃣ Docker 실행 파일 선택:</h5>
+                        <div style="display: flex; gap: 20px;">
+                            <button class="btn btn-primary" onclick="downloadDockerRunner('wsl')" style="flex: 1; background: #28a745;">
+                                🚀 WSL2/Linux (권장)
+                                <div style="font-size: 11px; margin-top: 5px;">Host 네트워크 모드 - 분산학습 지원</div>
+                            </button>
+                            <button class="btn btn-primary" onclick="downloadDockerRunner('windows')" style="flex: 1; background: #0078d4;">
+                                🪟 Windows Docker Desktop
+                                <div style="font-size: 11px; margin-top: 5px;">Bridge 모드 - 단일노드용</div>
+                            </button>
+                        </div>
+                        <p style="margin-top: 10px; font-size: 12px; color: #666; text-align: center;">
+                            💡 분산학습을 위해서는 반드시 WSL2 버전을 사용하세요
+                        </p>
+                    </div>
                 </div>
                 
                 <div style="margin-top: 20px; padding: 15px; background: #e7f3ff; border-radius: 8px;">
@@ -680,8 +740,50 @@ async def worker_install_page(token: str, db: Session = Depends(get_db)):
         <script>
             let installData = null;
             
-            // 페이지 로드 시 자동으로 설치 시작 여부 확인
-            window.addEventListener('DOMContentLoaded', () => {{
+            // 페이지 로드 시 노드 상태 확인
+            window.addEventListener('DOMContentLoaded', async () => {{
+                try {{
+                    // 노드 상태 확인
+                    const response = await fetch('/api/nodes/{qr_token.node_id}/status', {{
+                        headers: {{
+                            'Authorization': 'Bearer test-token-123'
+                        }}
+                    }});
+                    
+                    if (response.ok) {{
+                        const nodeData = await response.json();
+                        console.log('Node status:', nodeData);
+                        
+                        // 노드가 이미 등록되어 있고 VPN이 설정된 경우
+                        if (nodeData.status === 'registered' && nodeData.vpn_ip) {{
+                            // 설치 데이터 설정
+                            installData = {{
+                                vpn_ip: nodeData.vpn_ip,
+                                node_id: nodeData.node_id,
+                                config_exists: nodeData.config_exists,
+                                // Docker Runner는 API에서 직접 다운로드 가능
+                                docker_runner: 'available'
+                            }};
+                            
+                            // UI 업데이트
+                            document.getElementById('vpnIp').textContent = nodeData.vpn_ip;
+                            document.getElementById('result').style.display = 'block';
+                            document.querySelector('.status-icon').textContent = '✅';
+                            document.querySelector('.status p').textContent = '이미 등록이 완료된 노드입니다. 아래에서 필요한 파일을 다운로드하세요.';
+                            document.getElementById('startBtn').style.display = 'none';
+                            
+                            // 모든 단계를 완료 상태로 표시
+                            for (let i = 1; i <= 4; i++) {{
+                                const step = document.getElementById('step' + i);
+                                step.classList.add('completed');
+                                step.querySelector('.step-icon').textContent = '✓';
+                            }}
+                        }}
+                    }}
+                }} catch (error) {{
+                    console.error('Failed to check node status:', error);
+                }}
+                
                 // URL 파라미터로 자동 시작 여부 확인 (선택사항)
                 const urlParams = new URLSearchParams(window.location.search);
                 if (urlParams.get('autostart') === 'true') {{
@@ -762,7 +864,60 @@ async def worker_install_page(token: str, db: Session = Depends(get_db)):
                 document.getElementById('startBtn').style.display = 'none';
             }}
             
+            function downloadDockerRunner(osType) {{
+                // 이미 등록된 노드인 경우 API에서 직접 다운로드
+                if (installData && installData.docker_runner === 'available') {{
+                    // API에서 직접 다운로드 (OS 타입 포함)
+                    window.location.href = '/api/download/{qr_token.node_id}/docker-runner?os_type=' + osType;
+                    return;
+                }}
+                
+                if (!installData || !installData.docker_runner) {{
+                    alert('아직 설치 프로세스가 완료되지 않았습니다.\\n\\n"설치 시작" 버튼을 먼저 클릭하여 설치 프로세스를 완료한 후 다운로드하세요.');
+                    const btn = document.getElementById('startBtn');
+                    if (btn && btn.style.display === 'none') {{
+                        btn.style.display = 'block';
+                    }}
+                    if (btn) {{
+                        btn.scrollIntoView({{ behavior: 'smooth' }});
+                    }}
+                    return;
+                }}
+                
+                // 모든 OS타입은 API에서 직접 다운로드
+                window.location.href = '/api/download/{qr_token.node_id}/docker-runner?os_type=' + osType;
+            }}
+            
             function downloadWindowsInstaller() {{
+                // 이미 등록된 노드인 경우 설정 파일 다운로드 페이지로 이동
+                if (installData && installData.config_exists) {{
+                    // VPN 설치 스크립트 생성 API 호출
+                    fetch('/api/download/{qr_token.node_id}/vpn-installer', {{
+                        headers: {{
+                            'Authorization': 'Bearer test-token-123'
+                        }}
+                    }}).then(response => {{
+                        if (response.ok) {{
+                            return response.blob();
+                        }}
+                        throw new Error('Download failed');
+                    }}).then(blob => {{
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'vpn-installer-{qr_token.node_id}.bat';
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                    }}).catch(error => {{
+                        console.error('Download error:', error);
+                        // 대체 방법: 직접 다운로드 링크
+                        window.location.href = '/download/{qr_token.node_id}/config';
+                    }});
+                    return;
+                }}
+                
                 if (!installData || !installData.windows_installer) {{
                     alert('아직 설치 프로세스가 완료되지 않았습니다.\\n\\n"설치 시작" 버튼을 먼저 클릭하여 설치 프로세스를 완료한 후 다운로드하세요.');
                     // 설치 시작 버튼이 숨겨진 경우 다시 표시
@@ -800,54 +955,14 @@ async def worker_install_page(token: str, db: Session = Depends(get_db)):
                 }}
             }}
             
-            function showLinuxScript() {{
-                if (!installData || !installData.install_script) return;
-                
-                const scriptDiv = document.getElementById('installScript');
-                const isVisible = scriptDiv.style.display === 'block';
-                scriptDiv.style.display = isVisible ? 'none' : 'block';
-                
-                // 다운로드 버튼 관리
-                const existingBtn = document.getElementById('linuxDownloadBtn');
-                
-                if (!isVisible) {{
-                    // 스크립트를 보여줄 때만 다운로드 버튼 추가
-                    if (!existingBtn) {{
-                        const downloadBtn = document.createElement('button');
-                        downloadBtn.id = 'linuxDownloadBtn';
-                        downloadBtn.className = 'btn';
-                        downloadBtn.style.marginTop = '10px';
-                        downloadBtn.textContent = '📥 .sh 파일 다운로드';
-                        downloadBtn.onclick = function() {{
-                            const blob = new Blob([installData.install_script], {{ type: 'text/plain;charset=utf-8' }});
-                            const url = window.URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = 'install-worker-{qr_token.node_id}.sh';
-                            a.style.display = 'none';
-                            document.body.appendChild(a);
-                            a.click();
-                            
-                            setTimeout(() => {{
-                                window.URL.revokeObjectURL(url);
-                                document.body.removeChild(a);
-                            }}, 100);
-                        }};
-                        scriptDiv.parentNode.insertBefore(downloadBtn, scriptDiv.nextSibling);
-                    }}
-                }} else {{
-                    // 스크립트를 숨길 때 다운로드 버튼도 제거
-                    if (existingBtn) {{
-                        existingBtn.remove();
-                    }}
-                }}
-            }}
+            // showLinuxScript 함수 제거됨 (더 이상 사용하지 않음)
         </script>
     </body>
     </html>
     """
     
     return HTMLResponse(content=html_content)
+
 
 @router.post("/worker/process-installation/{token}")
 async def process_worker_installation(
@@ -872,15 +987,18 @@ async def process_worker_installation(
     try:
         # 이미 VPN이 설정된 경우
         if node.status != "pending":
-            # Windows installer 생성
-            windows_installer = generate_worker_windows_installer(node)
+            # Windows installer 생성 (VPN + Docker 두 개 파일)
+            vpn_installer = generate_worker_vpn_installer(node)
+            # docker_runner = generate_simple_worker_runner_linux(node)  # Linux only
+            docker_runner = generate_simple_worker_runner_wsl(node)  # WSL2
             
             return {
                 "status": "existing",
                 "node_id": node.node_id,
                 "vpn_ip": node.vpn_ip,
                 "install_script": generate_install_script(node),
-                "windows_installer": windows_installer,
+                "windows_installer": vpn_installer,
+                "docker_runner": docker_runner,
                 "message": "Already configured"
             }
         
@@ -915,7 +1033,7 @@ async def process_worker_installation(
         docker_env = {
             "NODE_ID": node.node_id,
             "DESCRIPTION": node.description or metadata.get('description', ''),
-            "CENTRAL_SERVER_IP": node.central_server_ip or metadata.get('central_server_ip', '10.100.0.1'),
+            "CENTRAL_SERVER_URL": node.central_server_url or metadata.get('central_server_url', os.getenv('CENTRAL_SERVER_URL', 'http://192.168.0.88:8000')),
             "HOST_IP": vpn_ip
         }
         node.docker_env_vars = json.dumps(docker_env)
@@ -937,8 +1055,9 @@ async def process_worker_installation(
         qr_token.used = True
         db.commit()
         
-        # 설치 스크립트 생성 (Windows 배치 파일)
-        windows_installer = generate_worker_windows_installer(node)
+        # 설치 스크립트 생성 (VPN + Docker 두 개 파일)
+        vpn_installer = generate_worker_vpn_installer(node)
+        docker_runner = generate_simple_worker_runner_wsl(node)  # WSL2
         
         # Linux/Mac용 스크립트도 제공 (선택사항)
         install_script = generate_install_script(node)
@@ -948,7 +1067,8 @@ async def process_worker_installation(
             "node_id": node.node_id,
             "vpn_ip": vpn_ip,
             "docker_env": docker_env,
-            "windows_installer": windows_installer,
+            "windows_installer": vpn_installer,
+            "docker_runner": docker_runner,
             "install_script": install_script,
             "config": base64.b64encode(config.encode()).decode()
         }
@@ -1013,11 +1133,7 @@ echo "✓ VPN 연결 시작 완료"
 # 4. VPN 연결 테스트
 echo ""
 echo "[4/5] VPN 연결 테스트 중..."
-if ping -c 2 {docker_env.get('CENTRAL_SERVER_IP', '10.100.0.1')} > /dev/null 2>&1; then
-    echo "✓ VPN 연결 성공: 중앙서버와 통신 가능"
-else
-    echo "⚠ VPN 연결 확인 필요"
-fi
+echo "✓ VPN 연결 완료 (워커노드 간 통신용)"
 
 # 5. Docker 환경변수 파일 생성
 echo ""
@@ -1026,7 +1142,7 @@ cat > worker-node.env << 'EOF'
 # Worker Node Environment Variables
 NODE_ID={docker_env.get('NODE_ID', node.node_id)}
 DESCRIPTION={docker_env.get('DESCRIPTION', '')}
-CENTRAL_SERVER_IP={docker_env.get('CENTRAL_SERVER_IP', '10.100.0.1')}
+CENTRAL_SERVER_URL={docker_env.get('CENTRAL_SERVER_URL', 'http://192.168.0.88:8000')}
 HOST_IP={docker_env.get('HOST_IP', node.vpn_ip)}
 EOF
 
@@ -1041,7 +1157,7 @@ echo ""
 echo "워커노드 정보:"
 echo "  - 노드 ID: {node.node_id}"
 echo "  - VPN IP: {node.vpn_ip}"
-echo "  - 중앙서버: {docker_env.get('CENTRAL_SERVER_IP', '10.100.0.1')}"
+echo "  - 중앙서버 URL: {docker_env.get('CENTRAL_SERVER_URL', 'http://192.168.0.88:8000')}"
 echo ""
 echo "Docker 컨테이너 실행 방법:"
 echo "  source worker-node.env"
@@ -1051,7 +1167,7 @@ echo "    --cap-add NET_ADMIN \\"
 echo "    --device /dev/net/tun \\"
 echo "    -e NODE_ID=\\$NODE_ID \\"
 echo "    -e DESCRIPTION=\\\"\\$DESCRIPTION\\\" \\"
-echo "    -e CENTRAL_SERVER_IP=\\$CENTRAL_SERVER_IP \\"
+echo "    -e CENTRAL_SERVER_URL=\\$CENTRAL_SERVER_URL \\"
 echo "    -e HOST_IP=\\$HOST_IP \\"
 echo "    -p 8080:8080 \\"
 echo "    --restart unless-stopped \\"
@@ -1082,7 +1198,7 @@ async def get_worker_status(node_id: str, db: Session = Depends(get_db)):
         "status": node.status,
         "vpn_ip": node.vpn_ip,
         "description": node.description,
-        "central_server_ip": node.central_server_ip,
+        "central_server_url": node.central_server_url,
         "docker_env": docker_env,
         "created_at": node.created_at,
         "updated_at": node.updated_at

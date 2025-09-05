@@ -1,0 +1,6 @@
+# WSL2 설정 (C:\Users\[사용자명]\.wslconfig 에 저장)
+[wsl2]
+memory=4GB
+processors=2
+localhostForwarding=true
+networkingMode=mirrored

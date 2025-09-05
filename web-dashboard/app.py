@@ -460,7 +460,7 @@ DASHBOARD_TEMPLATE = """
                 <div class="action-card">
                     <h3 style="margin-bottom: 16px; color: #1a202c;">🚀 Quick Deploy</h3>
                     <p style="color: #718096; margin-bottom: 20px; font-size: 14px;">
-                        Generate QR code or installation link for easy node deployment
+                        Generate installation link for easy node deployment
                     </p>
                     <button class="btn btn-primary" onclick="generateDeployment()" style="width: 100%;">
                         Generate Deployment Link
@@ -789,18 +789,9 @@ DASHBOARD_TEMPLATE = """
                 
                 if (!response.ok) throw new Error(data.error || 'Generation failed');
                 
-                // Create QR code using qrcode.js or iframe
-                const qrPageUrl = data.qr_url;
+                // Display installation link
                 document.getElementById('qr-display').innerHTML = `
                     <div style="margin-top: 24px;">
-                        <div style="text-align: center; margin-bottom: 20px;">
-                            <p style="color: #4a5568; font-size: 14px; margin-bottom: 12px;">
-                                📱 Scan QR code with mobile or click link below
-                            </p>
-                            <a href="${qrPageUrl}" target="_blank" class="btn btn-primary">
-                                🔗 Open QR Page
-                            </a>
-                        </div>
                         <div style="margin-top: 20px;">
                             <p style="color: #4a5568; font-size: 12px; margin-bottom: 8px;">Windows Installation URL:</p>
                             <div style="display: flex; gap: 8px; align-items: center;">
@@ -1125,7 +1116,7 @@ def get_node(node_id):
 
 @app.route('/api/generate-deployment')
 def generate_deployment():
-    """Generate deployment QR code and link"""
+    """Generate deployment link"""
     try:
         # Generate a unique token
         token = secrets.token_hex(16)
@@ -1137,14 +1128,9 @@ def generate_deployment():
         # Install URL for auto-installer
         install_url = f"{api_url}/install/{token}"
         
-        # QR code page URL
-        qr_url = f"{api_url}/vpn-qr?token={token}"
-        
         return jsonify({
             'install_url': install_url,
-            'qr_url': qr_url,
-            'token': token,
-            'direct_qr': f"{api_url}/api/qr/generate?url={install_url}"  # Direct QR image
+            'token': token
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1193,6 +1179,22 @@ def sync_node(node_id):
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/wireguard-status')
+def wireguard_status():
+    """WireGuard 서버 상태 모니터링 페이지"""
+    # HTML 파일 짍접 읽기
+    try:
+        # Docker 컨테이너 내부 경로
+        with open('/app/wireguard_status.html', 'r') as f:
+            return f.read()
+    except FileNotFoundError:
+        # 호스트 경로 시도
+        try:
+            with open('wireguard_status.html', 'r') as f:
+                return f.read()
+        except:
+            return "<h1>WireGuard Status Page Not Found</h1><p>Please restart the dashboard container.</p>"
 
 @app.errorhandler(404)
 def not_found(e):

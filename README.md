@@ -1,23 +1,54 @@
 # WireGuard VPN Manager
 
-자체 호스팅 WireGuard VPN 관리 시스템 - 분산 AI 플랫폼용
+워커노드 간 P2P 통신을 위한 WireGuard VPN 관리 시스템
 
 ## 📋 개요
 
-이 프로젝트는 분산 AI 플랫폼의 중앙서버와 워커노드들을 안전하게 연결하기 위한 WireGuard 기반 VPN 관리 시스템입니다. SaaS 의존성 없이 완전히 자체 호스팅 가능합니다.
+이 프로젝트는 분산 AI 플랫폼의 **워커노드들 간 안전한 P2P 통신**을 위한 WireGuard 기반 VPN 관리 시스템입니다. 중앙서버는 공개 IP로 직접 접근 가능하며, 워커노드들만 VPN을 통해 서로 통신합니다.
 
-## 🏗️ 아키텍처
+## 🏗️ 시스템 아키텍처
 
+### 전체 구조
 ```
-[VPN Manager Server]
-    ├── WireGuard Server (10.100.0.254)
-    ├── Management API (Port 8090)
-    └── PostgreSQL Database
-    
-[Connected Nodes]
-    ├── Central Server (10.100.0.1)
-    └── Worker Nodes (10.100.1.x)
+[인터넷/공개망]
+    │
+    ├── [중앙서버] (공인 IP 또는 도메인) - 192.168.0.88
+    │    ├─ API Server (Port 8000) - 모든 워커노드가 직접 접속
+    │    ├─ Dashboard (Port 3000) - 관리자 웹 인터페이스
+    │    └─ Database & Services
+    │    
+    └── [VPN Server] (워커노드 전용) 192.168.0.68
+         ├── WireGuard Server (10.100.0.1)
+         ├── Management API (Port 8090)
+         └── Web Dashboard (Port 5000)
+         
+[VPN 네트워크] (10.100.0.0/16)
+    └── Worker Nodes (10.100.1.x) (worker끼리 서로 통신 문제없이 되어야함)
+         ├── Worker #1 (A컴퓨터 VPN Server의 wireguard 등록 - 10.100.1.2)
+         ├── Worker #2  (B컴퓨터 VPN Server의 wireguard 등록 - 10.100.1.2)
+         └── Worker #N
+
+    *A 컴퓨터: 192.168.0.88, B 컴퓨터: 192.168.0.30     
 ```
+
+### 핵심 설계 원칙
+
+1. **중앙서버**
+   - VPN 불필요 (이미 공개 접근 가능)
+   - 고정 IP 또는 도메인으로 운영
+   - 모든 워커노드가 직접 HTTP/HTTPS로 접속
+   - 작업 할당, 모니터링, 관리 기능 제공
+
+2. **워커노드**
+   - VPN 클라이언트로만 동작
+   - 중앙서버: 공개 IP로 직접 접속
+   - 다른 워커노드: VPN을 통한 P2P 통신
+   - NAT/방화벽 환경에서도 작동
+
+3. **VPN 서버**
+   - 워커노드 전용 네트워크 관리
+   - 중앙서버와 독립적으로 운영
+   - 자동 IP 할당 및 키 관리
 
 ## 🚀 빠른 시작
 
@@ -38,7 +69,7 @@ VPN Manager를 실행할 서버에서 다음 포트를 열어야 합니다:
 New-NetFirewallRule -DisplayName "VPN Manager API" -Direction Inbound -Protocol TCP -LocalPort 8090 -Action Allow -Profile Any
 
 # WireGuard VPN 포트 (필수) - 개인 및 공용 네트워크 모두 허용
-New-NetFirewallRule -DisplayName "WireGuard VPN" -Direction Inbound -Protocol UDP -LocalPort 51820 -Action Allow -Profile Any
+New-NetFirewallRule -DisplayName "WireGuard VPN" -Direction Inbound -Protocol UDP -LocalPort 41820 -Action Allow -Profile Any
 
 # ICMP 규칙 추가 (필수) - ping 응답 허용
 New-NetFirewallRule -DisplayName "WireGuard ICMP In" -Direction Inbound -Protocol ICMPv4 -IcmpType 8 -Action Allow
@@ -54,13 +85,13 @@ New-NetFirewallRule -DisplayName "WireGuard UI" -Direction Inbound -Protocol TCP
 ```bash
 # UFW 사용 시
 sudo ufw allow 8090/tcp comment 'VPN Manager API'
-sudo ufw allow 51820/udp comment 'WireGuard VPN'
+sudo ufw allow 41820/udp comment 'WireGuard VPN'
 sudo ufw allow 5000/tcp comment 'WireGuard UI (optional)'
 sudo ufw reload
 
 # iptables 사용 시
 sudo iptables -A INPUT -p tcp --dport 8090 -j ACCEPT
-sudo iptables -A INPUT -p udp --dport 51820 -j ACCEPT
+sudo iptables -A INPUT -p udp --dport 41820 -j ACCEPT
 sudo iptables -A INPUT -p tcp --dport 5000 -j ACCEPT
 sudo iptables-save > /etc/iptables/rules.v4
 ```
@@ -68,7 +99,7 @@ sudo iptables-save > /etc/iptables/rules.v4
 #### 클라우드 환경 (AWS/GCP/Azure)
 Security Group 또는 방화벽 규칙에서 다음 포트 허용:
 - TCP 8090 (API)
-- UDP 51820 (VPN)
+- UDP 41820 (VPN)
 - TCP 5000 (UI, 선택사항)
 
 ### 3. 로컬 테스트
@@ -160,14 +191,14 @@ curl -H "Authorization: Bearer test-token-123" http://localhost:8090/status/wire
 | 포트 | 프로토콜 | 용도 | 필수 여부 |
 |------|---------|------|----------|
 | 8090 | TCP | VPN Manager API | ✅ 필수 |
-| 51820 | UDP | WireGuard VPN | ✅ 필수 |
+| 41820 | UDP | WireGuard VPN | ✅ 필수 |
 | 5000 | TCP | WireGuard UI | 선택 |
 | 5433 | TCP | PostgreSQL (로컬) | 로컬만 |
 
 ### 네트워크 설정 확인
 ```bash
 # 포트 열림 확인 (VPN Manager 서버에서)
-netstat -an | grep -E "8090|51820"
+netstat -an | grep -E "8090|41820"
 
 # 외부에서 접근 테스트 (워커 노드에서)
 curl http://VPN_MANAGER_IP:8090/health

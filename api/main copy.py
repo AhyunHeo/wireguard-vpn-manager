@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 from database import SessionLocal, engine, Base
 from models import Node, NodeCreate, NodeResponse, NodeStatus
 from wireguard_manager import WireGuardManager
-from simple_worker_docker_runner import generate_simple_worker_runner, generate_simple_worker_runner_wsl
 
 # DB 연결 재시도 함수
 def wait_for_db(max_retries=30):
@@ -907,33 +906,24 @@ if os.path.exists(web_dashboard_path):
 @app.get("/api/download/{node_id}/docker-runner")
 async def download_docker_runner(
     node_id: str,
-    os_type: str = "windows",  # OS 타입 파라미터 추가 (기본값: windows)
     db: Session = Depends(get_db)
 ):
-    """워커노드용 Docker Runner 다운로드 (OS별 분기)"""
+    """워커노드용 Docker Runner 배치 파일 다운로드 (인증 불필요)"""
     # 노드 조회
     node = db.query(Node).filter(Node.node_id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     
-    # OS별로 Docker runner 생성    
-    if os_type.lower() == "wsl":
-        # WSL용 (Windows에서 WSL2로 host 네트워크 모드 사용)
-        runner_content = generate_simple_worker_runner_wsl(node)
-        filename = f"docker-runner-wsl-{node_id}.bat"
-        media_type = "application/x-bat"
-    else:
-        # Windows용 (bridge 네트워크 모드) - 기본값
-        runner_content = generate_simple_worker_runner(node)
-        filename = f"docker-runner-{node_id}.bat"
-        media_type = "application/x-bat"
+    # Docker Runner 생성
+    from simple_worker_docker_runner import generate_simple_worker_runner
+    runner_content = generate_simple_worker_runner(node)
     
     # 파일로 반환
     return Response(
         content=runner_content,
-        media_type=media_type,
+        media_type="application/x-bat",
         headers={
-            "Content-Disposition": f"attachment; filename={filename}"
+            "Content-Disposition": f"attachment; filename=docker-runner-{node_id}.bat"
         }
     )
 

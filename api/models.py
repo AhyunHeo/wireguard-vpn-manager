@@ -25,7 +25,7 @@ class Node(Base):
     
     # 워커노드 플랫폼 관련 필드
     description = Column(String)  # 워커노드 설명 (예: "2080-test")
-    central_server_ip = Column(String)  # 중앙서버 IP (VPN 네트워크 내)
+    central_server_url = Column(String)  # 중앙서버 공개 URL (예: http://192.168.0.88:8000)
     docker_env_vars = Column(Text)  # Docker Compose 환경변수 저장
 
 class QRToken(Base):
@@ -47,7 +47,7 @@ class NodeCreate(BaseModel):
     hostname: str = Field(..., description="호스트명")
     public_ip: Optional[str] = Field(None, description="공인 IP (선택)")
     description: Optional[str] = Field(None, description="워커노드 설명")
-    central_server_ip: Optional[str] = Field(None, description="중앙서버 IP (VPN 내부)")
+    central_server_url: Optional[str] = Field(None, description="중앙서버 공개 URL")
 
     class Config:
         schema_extra = {
@@ -57,7 +57,7 @@ class NodeCreate(BaseModel):
                 "hostname": "worker01.example.com",
                 "public_ip": "203.0.113.1",
                 "description": "2080-test",
-                "central_server_ip": "10.100.0.1"
+                "central_server_url": "http://192.168.0.88:8000"
             }
         }
 
@@ -78,7 +78,7 @@ class NodeResponse(BaseModel):
                 "config": "W0ludGVyZmFjZV0K...",
                 "public_key": "abcd1234...",
                 "server_public_key": "xyz789...",
-                "server_endpoint": "vpn.example.com:51820"
+                "server_endpoint": "vpn.example.com:41820"
             }
         }
 

@@ -14,28 +14,30 @@ services:
       - PGID=${PGID:-1000}
       - TZ=${TZ:-Asia/Seoul}
       - SERVERURL=${SERVERURL:-auto}
-      - SERVERPORT=${SERVERPORT:-51820}
-      - PEERS=30
+      - SERVERPORT=${SERVERPORT:-41820}
+      - PEERS=0  # 피어 자동 생성 비활성화
       - PEERDNS=${PEERDNS:-auto}
       - INTERNAL_SUBNET=${INTERNAL_SUBNET:-10.100.0.0/16}
       - ALLOWEDIPS=${ALLOWED_IPS:-10.100.0.0/16}
       - LOG_CONFS=true
+      - PERSISTENTKEEPALIVE_PEERS=""  # 빈 값으로 설정
     volumes:
       - ./config:/config
       - /lib/modules:/lib/modules
       - ./config/custom-scripts:/custom-scripts:ro
     ports:
-      - "51820:51820/udp"  # 모든 인터페이스
+      - "41820:51820/udp"  # 호스트 41820 -> 컨테이너 51820
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv4.ip_forward=1
     restart: unless-stopped
     networks:
-      vpn_net:
-        ipv4_address: 172.20.0.2
+      - vpn_net
 
   vpn-api:
-    build: ./api
+    build: 
+      context: .
+      dockerfile: ./Dockerfile
     container_name: vpn-api
     privileged: true
     cap_add:
@@ -48,11 +50,14 @@ services:
       - API_TOKEN=${API_TOKEN:-test-token-123}
       - SERVERURL=${SERVERURL:-auto}
       - LOCAL_SERVER_IP=${LOCAL_SERVER_IP:-localhost}
+      - CENTRAL_SERVER_URL=${CENTRAL_SERVER_URL:-http://192.168.0.88:8000}
     volumes:
       - ./config:/config
       - /var/run/docker.sock:/var/run/docker.sock
       - ./api:/app:ro  # 소스 코드를 읽기 전용으로 마운트
-    command: uvicorn main:app --host 0.0.0.0 --port 8090 --reload  # --reload 옵션 추가
+      - ./scripts:/scripts:ro  # 스크립트 마운트
+      - ./entrypoint.sh:/entrypoint.sh:ro  # entrypoint.sh를 루트에 마운트
+    entrypoint: ["/bin/bash", "/entrypoint.sh"]
     ports:
       - "0.0.0.0:8090:8090"  # 모든 인터페이스에서 명시적으로 리스닝
     depends_on:
@@ -62,8 +67,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
-      vpn_net:
-        ipv4_address: 172.20.0.3
+      - vpn_net
 
   postgres:
     image: postgres:15
@@ -78,8 +82,7 @@ services:
       - "127.0.0.1:5434:5432"  # DB는 로컬만
     restart: unless-stopped
     networks:
-      vpn_net:
-        ipv4_address: 172.20.0.4
+      - vpn_net
 
   web-dashboard:
     build: ./web-dashboard
@@ -98,15 +101,14 @@ services:
       - vpn-api
     restart: unless-stopped
     networks:
-      vpn_net:
-        ipv4_address: 172.20.0.5
+      - vpn_net
+
+  # wireguard-ui 제거 - 기존 서버와 호환 문제
+  # 대신 http://192.168.0.68:5000/wireguard-status 사용
 
 networks:
   vpn_net:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/24
 
 volumes:
   vpn_db_data:
